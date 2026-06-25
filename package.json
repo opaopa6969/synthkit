@@ -1,0 +1,16 @@
+{
+  "name": "synthkit",
+  "version": "0.1.0",
+  "description": "Pure, deterministic, headless-testable procedural audio/music/SFX engine — render a plain-data synth graph offline to a Float32Array or live to Web Audio.",
+  "type": "module",
+  "main": "index.js",
+  "exports": "./index.js",
+  "files": ["index.js"],
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "keywords": ["audio", "synth", "procedural", "music", "sfx", "web-audio"],
+  "license": "MIT",
+  "author": "opaopa6969",
+  "repository": { "type": "git", "url": "https://github.com/opaopa6969/synthkit.git" }
+}
