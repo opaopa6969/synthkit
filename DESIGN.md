@@ -2,12 +2,12 @@
 
 A **procedural audio / music / SFX synthesis engine**. You describe sound as
 **plain data** — a *synth spec* — and the engine turns that one spec into
-either:
+either (the offline path is implemented in M1; the live path is planned for M4):
 
 - **(a) an offline sample buffer** (`Float32Array`, mono, `[-1, 1]`),
   synthesized in pure JS with no audio hardware — fully **headless-testable**;
   or
-- **(b) live Web Audio nodes** in a browser (`connect(spec, audioContext)`).
+- **(b) live Web Audio nodes** in a browser (`connect(spec, audioContext)`, M4).
 
 The spec is engine-agnostic, but synthkit is designed to drop into a game: it
 can both **augment an existing Web-Audio SFX layer** and drive **dynamic BGM**

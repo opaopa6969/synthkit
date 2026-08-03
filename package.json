@@ -1,7 +1,7 @@
 {
   "name": "synthkit",
   "version": "0.1.0",
-  "description": "Pure, deterministic, headless-testable procedural audio/music/SFX engine — render a plain-data synth graph offline to a Float32Array or live to Web Audio.",
+  "description": "Pure, deterministic, headless-testable procedural audio/music/SFX engine — render a plain-data synth spec offline to a Float32Array; live Web Audio is planned.",
   "type": "module",
   "main": "index.js",
   "exports": "./index.js",
