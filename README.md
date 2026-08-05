@@ -17,7 +17,7 @@ from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 ## API
 
 ```js
-render(spec, { sampleRate = 44100, duration }) → Float32Array   // current: offline, pure
+render(spec, { sampleRate = 44100, duration = 0.3 }) → Float32Array   // current: offline, pure
 note(name) → Hz                                                 // current: 'A4' → 440
 connect(spec, audioContext) → { output, start, stop }           // planned: live Web Audio [M4]
 scale(root, mode) / chord(root, quality) / sequence(spec, opts) // planned [M2]
