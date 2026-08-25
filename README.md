@@ -3,24 +3,24 @@
 **Pure, deterministic, headless-testable procedural audio / music / SFX
 engine.** You describe sound as **plain data** (a *synth spec*) and the *same*
 spec renders **offline to a `Float32Array`** (pure JS, no audio hardware — so
-it can be FFT/RMS-checked in CI) or connects **live to Web Audio** in the
+it can be FFT/RMS-checked in CI). A future Web Audio backend is planned for the
 browser. Zero runtime dependencies, single-file ESM, no `Math.random` (seeded),
 MIT. Built to drop into a game — augment Web-Audio SFX and drive dynamic BGM
 from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 
 > **Status: M1.** Oscillators (`sine` / `saw` / `square` / `triangle` /
 > `noise`) → ADSR envelope → offline `render`, plus `note(name)` → Hz.
-> Sequencer, filters, music-theory helpers and live `connect()` are M2–M4
-> (stubbed / documented). M1 produces a clean, non-clipping, frequency-correct
+> Sequencer, filters, music-theory helpers and live `connect()` are planned for
+> M2–M4. M1 produces a clean, non-clipping, frequency-correct
 > note that the test suite verifies by analyzing the rendered buffer.
 
 ## API
 
 ```js
-render(spec, { sampleRate = 44100, duration }) → Float32Array   // (a) offline, pure
-note(name) → Hz                                                 // 'A4' → 440 (eq. temperament)
-connect(spec, audioContext) → { output, start, stop }           // (b) live Web Audio   [M4]
-scale(root, mode) / chord(root, quality) / sequence(spec, opts) //                      [M2]
+render(spec, { sampleRate = 44100, duration = 0.3 }) → Float32Array   // current: offline, pure
+note(name) → Hz                                                 // current: 'A4' → 440
+connect(spec, audioContext) → { output, start, stop }           // planned: live Web Audio [M4]
+scale(root, mode) / chord(root, quality) / sequence(spec, opts) // planned [M2]
 ```
 
 A **spec** is plain data:
@@ -53,7 +53,7 @@ note('A4'); // 440
 note('A5'); // 880
 ```
 
-### Web Audio (browser) — *M4*
+### Web Audio (browser) — *planned for M4*
 
 ```js
 import { connect } from 'synthkit';

@@ -18,7 +18,7 @@
 //
 // This file is the M1 core: oscillator (sine/saw/square/triangle) through an
 // ADSR envelope → Float32Array, plus equal-temperament note(name)→Hz. The
-// sequencer, filters and Web-Audio connect() are M2+ (stubs at the bottom).
+// sequencer, filters and Web-Audio connect() are planned for M2+.
 
 // ---------------------------------------------------------------------------
 // Music theory — note(name) → frequency (Hz). Equal temperament, A4 = 440 Hz.

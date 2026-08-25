@@ -1,0 +1,120 @@
+{
+  "repo": "synthkit",
+  "surveyed_at": "2026-08-21T23:11:10Z",
+  "kind": "library",
+  "summary": "決定論的・ヘッドレステスト可能な手続き音声合成エンジン。plain-data の synth spec を純粋関数で offline render し Float32Array を返す。M1 完了（oscillator + ADSR + render + note）。M2〜M4（sequencer / filter / music theory / SFX preset / live Web Audio）は未実装。ゲーム（netmahg）への組込みを前提に設計されている。",
+  "decision": "defer",
+  "decision_reason": "M1 の公開 API は render() と note() のみで、起動 1 秒以内・依存ゼロ・状態なしのため常駐サーバにする価値が薄い。エージェントは node -e で直接 import して呼べる。合成価値が生まれるのは M2（sequencer + music theory）や M3（麻雀 SFX preset）が実装された後で、その時点で netmahg の SFX/BGM 生成や kamishibai の音声トラック合成など他サービスとの有機的組み合わせが可能になる。それまでは defer とし、M2 or M3 完了を再評価のトリガとする。",
+  "existing": {
+    "http_api": false,
+    "cli": false,
+    "mcp": false,
+    "healthz": false,
+    "volta_manifest": false,
+    "hosted_url": null
+  },
+  "proposed_namespace": "synthkit",
+  "capabilities": [
+    {
+      "verb": "synth spec をオフラインで音声サンプルバッファに変換する",
+      "kind": "tool",
+      "name": "render",
+      "io": "{osc, freq, env, gain, seed} + {sampleRate, duration} → Float32Array (mono, [-1,1])",
+      "side_effect": "none",
+      "long_running": false,
+      "maps_to": "index.js:114 render()"
+    },
+    {
+      "verb": "音名を周波数 Hz に変換する",
+      "kind": "tool",
+      "name": "note",
+      "io": "noteName (string | number) → Hz (number)",
+      "side_effect": "none",
+      "long_running": false,
+      "maps_to": "index.js:32 note()"
+    },
+    {
+      "verb": "ノート列を時間軸に並べてシーケンスをレンダする (計画)",
+      "kind": "tool",
+      "name": "sequence",
+      "io": "steps[] + {sampleRate, tempo, gate} → Float32Array",
+      "side_effect": "none",
+      "long_running": false,
+      "maps_to": "index.js:144 TODO (M2)"
+    },
+    {
+      "verb": "スケール・コード・進行を生成する (計画)",
+      "kind": "tool",
+      "name": "scale_chord",
+      "io": "root + mode/quality → [Hz, ...]",
+      "side_effect": "none",
+      "long_running": false,
+      "maps_to": "index.js:141-143 TODO (M2)"
+    },
+    {
+      "verb": "麻雀イベント向け SFX preset を生成する (計画)",
+      "kind": "tool",
+      "name": "sfx",
+      "io": "{type: clack|riichi|tsumo|ron|doraFlip, intensity, pitch, seed} → synth spec",
+      "side_effect": "none",
+      "long_running": false,
+      "maps_to": "index.js:146 TODO (M3)"
+    },
+    {
+      "verb": "能力の仕様",
+      "kind": "resource",
+      "name": "spec",
+      "uri": "synthkit://spec"
+    },
+    {
+      "verb": "使い方",
+      "kind": "resource",
+      "name": "guide",
+      "uri": "synthkit://guide"
+    },
+    {
+      "verb": "ゲーム状態から synth spec を組み立て、offline render で検証可能な SFX/BGM を作る手順",
+      "kind": "skill",
+      "name": "game-audio-synth",
+      "locality": "repo"
+    }
+  ],
+  "composition_examples": [
+    "synthkit__render → WAV 変換 → kamishibai__render_start (動画に音声トラックを追加): M2/M3 完了後に synthkit で BGM/SFX を生成し、kamishibai で映像と合成する",
+    "netmahg のゲーム状態 (tension, riichi, score) → synthkit__sfx → ブラウザで再生: M3/M4 完了後に netmahg 側が synthkit の preset を呼び出し、アセットファイルなしで動的 SFX/BGM を生成する",
+    "synthkit__scale_chord → synthkit__sequence → synthkit__render: M2 完了後にスケールとコード進行からメロディを組み立て、offline でレンダして音声アセットを出す"
+  ],
+  "dependencies": [
+    {
+      "repo": "netmahg",
+      "direction": "provides_to",
+      "capability": "SFX preset (clack/riichi/tsumo/ron/doraFlip) + dynamic BGM (M3/M4)",
+      "exists_now": false,
+      "note": "DESIGN.md M4 で netmahg への組込みを明示。netmahg は volta カタログに存在するが MCP バックエンドなし。synthkit 側もまだ SFX preset は未実装 (M3)。両者が揃った時点で協調の価値が生まれる。"
+    },
+    {
+      "repo": "kamishibai",
+      "direction": "provides_to",
+      "capability": "音声トラック (Float32Array → WAV)",
+      "exists_now": true,
+      "note": "kamishibai は volta カタログに存在し MCP バックエンドあり (job 型 render)。synthkit が生成した音声を kamishibai の映像に合成する絵が描けるが、現在は synthkit 側にシーケンス機能がないため単音のみ。"
+    }
+  ],
+  "library_serve": {
+    "needed": false,
+    "new_work": [],
+    "runtime": "node",
+    "estimated_effort": "S"
+  },
+  "risks": [
+    "M1 のみで公開 API が 2 つ (render, note) しかなく、サーバ化しても tool の面が薄い。M2/M3 が完了するまでは常駐プロセスを立てる費用対効果が低い。",
+    "render() は純粋関数・依存ゼロ・サブ秒のため、エージェントは node -e で直接呼べる。MCP サーバを介する恩恵（常駐・状態管理）が現状ない。",
+    "Float32Array は MCP の JSON レスポンスにそのまま載らない。WAV/base64 エンコード等の出力形式設計が将来必要。",
+    "live Web Audio (M4) はブラウザ専用で MCP サーバ（Node）からは扱えない。MCP 化するのは offline render のみ。"
+  ],
+  "open_questions": [
+    "M2 (sequencer + music theory) の完了予定はいつか？これが MCP 化の実質的トリガになる。",
+    "M3 の SFX preset は synthkit 側に持つか、netmahg 側に持つか？preset の所有権によって MCP サーバの置き場が変わる。",
+    "render の出力を他サービス（kamishibai 等）に渡す場合の形式（WAV / base64 / ファイルパス）の想定はあるか。"
+  ]
+}
