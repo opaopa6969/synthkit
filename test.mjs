@@ -6,6 +6,15 @@ import { render, note } from './index.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error('  ✗ ' + msg); } };
+const throws = (fn, pattern, msg) => {
+  try {
+    fn();
+  } catch (err) {
+    ok(err instanceof Error && pattern.test(err.message), msg);
+    return;
+  }
+  ok(false, msg);
+};
 
 const SR = 44100;
 const DUR = 0.3;                          // held seconds
@@ -43,6 +52,20 @@ ok(Math.abs(note('A4') * 2 - note('A5')) < 1e-9, 'one octave doubles the frequen
 ok(Math.abs(note('C4') - 261.6256) < 1e-3, `note('C4') ≈ 261.63 (got ${note('C4').toFixed(4)})`);
 ok(Math.abs(note('E4') - 329.6276) < 1e-3, `note('E4') ≈ 329.63 (got ${note('E4').toFixed(4)})`);
 ok(Math.abs(note('A#4') - note('Bb4')) < 1e-9, 'A#4 and Bb4 are enharmonic-equal');
+ok(note(123.45) === 123.45, 'note() passes numeric frequencies through unchanged');
+ok(Math.abs(note('C-1') * 2 - note('C0')) < 1e-9, 'note() accepts negative octaves');
+throws(() => note('H4'), /bad note name "H4"/, 'note() rejects invalid note names');
+throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render() rejects unknown oscillator types');
+
+// Zero-length ADSR stages transition immediately and remain finite.
+{
+  const zeroEnv = render({
+    osc: 'square', freq: 0, gain: 1,
+    env: { attack: 0, decay: 0, sustain: 0.5, release: 0 }
+  }, { sampleRate: 10, duration: 0.3 });
+  ok(zeroEnv.length === 3, `zero-release ADSR has no tail (got ${zeroEnv.length} samples)`);
+  ok(zeroEnv.every((v) => Number.isFinite(v) && v === 0.5), 'zero-length ADSR stages render the sustain level');
+}
 
 // (e) DETERMINISTIC — two renders of the same spec are byte-identical
 {
@@ -60,6 +83,48 @@ ok(Math.abs(note('A#4') - note('Bb4')) < 1e-9, 'A#4 and Bb4 are enharmonic-equal
   let same = a.length === b.length;
   for (let i = 0; i < a.length && same; i++) if (a[i] !== b[i]) same = false;
   ok(same, 'seeded noise is deterministic across two runs');
+}
+// Different seeds produce different deterministic noise sequences.
+{
+  const noise = (seed) => render({
+    osc: 'noise', seed, gain: 1,
+    env: { attack: 0, decay: 0, sustain: 1, release: 0 }
+  }, { sampleRate: SR, duration: 0.01 });
+  const a = noise(7);
+  const b = noise(8);
+  let same = a.length === b.length;
+  for (let i = 0; i < a.length && same; i++) if (a[i] !== b[i]) same = false;
+  ok(!same, 'different seeds produce different noise output');
+}
+
+// Seeded noise remains broadband: sampled low/mid/high DFT bands should have
+// comparable energy rather than collapsing into a narrow spectral band.
+{
+  const N = 4096;
+  const noise = render({
+    osc: 'noise', seed: 7, gain: 1,
+    env: { attack: 0, decay: 0, sustain: 1, release: 0 }
+  }, { sampleRate: SR, duration: N / SR });
+  const powerAtBin = (k) => {
+    const omega = (2 * Math.PI * k) / N;
+    const cw = Math.cos(omega), coeff = 2 * cw;
+    let s0 = 0, s1 = 0, s2 = 0;
+    for (let i = 0; i < N; i++) {
+      s0 = noise[i] + coeff * s1 - s2;
+      s2 = s1; s1 = s0;
+    }
+    const real = s1 - s2 * cw;
+    const imag = s2 * Math.sin(omega);
+    return real * real + imag * imag;
+  };
+  const bandPower = (firstBin) => {
+    let power = 0;
+    for (let k = firstBin; k < firstBin + 16; k++) power += powerAtBin(k);
+    return power;
+  };
+  const bands = [bandPower(8), bandPower(160), bandPower(800)];
+  const spectralRatio = Math.max(...bands) / Math.min(...bands);
+  ok(spectralRatio < 3, `noise has broadband low/mid/high energy (ratio ${spectralRatio.toFixed(3)})`);
 }
 
 // (f) SPECTRUM — a tiny DFT confirms 440 Hz dominates a window of the A4 sine.
