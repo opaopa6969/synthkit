@@ -67,6 +67,19 @@ throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render
   ok(zeroEnv.every((v) => Number.isFinite(v) && v === 0.5), 'zero-length ADSR stages render the sustain level');
 }
 
+// Level inputs are saturated to their documented 0..1 range so invalid specs
+// cannot produce a clipping buffer or invert the signal.
+{
+  const sample = (gain, sustain) => render({
+    osc: 'square', freq: 0, gain,
+    env: { attack: 0, decay: 0, sustain, release: 0 }
+  }, { sampleRate: 10, duration: 0.1 })[0];
+  ok(sample(1.5, 1) === 1, 'gain above 1 is clamped to 1');
+  ok(sample(1, 1.5) === 1, 'sustain above 1 is clamped to 1');
+  ok(sample(-0.5, 1) === 0, 'gain below 0 is clamped to 0');
+  ok(sample(1, -0.5) === 0, 'sustain below 0 is clamped to 0');
+}
+
 // (e) DETERMINISTIC — two renders of the same spec are byte-identical
 {
   const a = render(spec, { sampleRate: SR, duration: DUR });

@@ -63,6 +63,8 @@ from game state (tension, round, score).
 }
 ```
 
+`sustain` and `gain` values outside `0..1` are clamped to that range.
+
 The spec GROWS (it does not change shape) at later milestones: `filter`, `seq`,
 and a `voices`/`mix` array layer on top of the same object.
 

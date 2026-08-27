@@ -35,6 +35,8 @@ A **spec** is plain data:
 }
 ```
 
+`sustain` and `gain` values outside `0..1` are clamped to that range.
+
 ## Usage
 
 ### Offline render (Node — headless, testable)
