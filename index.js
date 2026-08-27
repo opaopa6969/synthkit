@@ -80,7 +80,7 @@ function oscSample(type, phase, rng) {
 function adsrAmp(env, t, duration) {
   const a = env.attack  ?? 0.01;
   const d = env.decay   ?? 0.05;
-  const s = env.sustain ?? 0.7;   // sustain LEVEL (0..1), not a time
+  const s = Math.min(1, Math.max(0, env.sustain ?? 0.7)); // sustain LEVEL (0..1), not a time
   const r = env.release ?? 0.1;
 
   if (t < 0) return 0;
@@ -115,7 +115,7 @@ export function render(spec = {}, opts = {}) {
   const sampleRate = opts.sampleRate ?? 44100;
   const hold = opts.duration ?? 0.3;            // seconds the note is held
   const env = spec.env ?? {};
-  const gain = spec.gain ?? 0.9;
+  const gain = Math.min(1, Math.max(0, spec.gain ?? 0.9));
   const type = spec.osc ?? 'sine';
   const freq = note(spec.freq ?? 'A4');
   const rng = mulberry32((spec.seed ?? 1) >>> 0);
