@@ -80,6 +80,18 @@ function clamp01(x) {
   return Number.isNaN(x) ? 0 : Math.min(1, Math.max(0, x));
 }
 
+// Coerce a numeric option to a finite value: NaN / Infinity / non-numbers fall
+// back to `def`, finite values are clamped to [min, max]. Bounds are the
+// physically meaningful range of audio sample rates / durations, so a spec
+// cannot drive `render` into an unbounded buffer allocation (DoS) — the buffer
+// length is `sampleRate * (duration + release)`, so a hostile or malformed
+// `sampleRate: 1e9, duration: 1` would otherwise allocate ~4.4 GB and spin the
+// render loop until the host is killed.
+function finiteOpt(x, def, min, max) {
+  if (typeof x !== 'number' || !Number.isFinite(x)) return def;
+  return Math.min(max, Math.max(min, x));
+}
+
 // ---------------------------------------------------------------------------
 // ADSR envelope — amplitude ∈ [0, 1] at time t (seconds), given a note that is
 // held for `duration` seconds. attack→decay→sustain (held) then release.
@@ -134,8 +146,8 @@ function noteTail(env, duration) {
 //   the envelope release tail, so the output is `duration + release` long.
 // ---------------------------------------------------------------------------
 export function render(spec = {}, opts = {}) {
-  const sampleRate = opts.sampleRate ?? 44100;
-  const hold = opts.duration ?? 0.3;            // seconds the note is held
+  const sampleRate = finiteOpt(opts.sampleRate, 44100, 1, 192000);
+  const hold = finiteOpt(opts.duration, 0.3, 0, 3600);  // seconds the note is held
   const env = spec.env ?? {};
   const gain = clamp01(spec.gain ?? 0.9);
   const type = spec.osc ?? 'sine';

@@ -243,5 +243,39 @@ for (const osc of ['saw', 'square', 'triangle']) {
   }
 }
 
+// render() bounds sampleRate / duration so a malformed spec cannot drive an
+// unbounded buffer allocation. The buffer length is sampleRate*(duration+
+// release); without bounds, `sampleRate: 1e9, duration: 1` would allocate ~4.4
+// GB and spin the render loop until the host is killed. Hostile / non-finite
+// values normalise to the defaults (44100 Hz / 0.3 s); finite out-of-range
+// values clamp to the physically meaningful window [1..192000] Hz / [0..3600] s.
+{
+  // Repro of the original DoS: now completes instantly instead of allocating GB.
+  const b = render({ osc: 'sine' }, { sampleRate: 1e9, duration: 1 });
+  // sampleRate clamps to 192000; duration (1 s) is in range → length == 192000 * (1 + 0.1 release).
+  ok(b.length === Math.round(192000 * 1.1), `huge sampleRate clamped to 192000 (got ${b.length})`);
+  ok(b.every(Number.isFinite), 'clamped-sampleRate buffer is all finite');
+
+  // Non-finite sampleRate falls back to the 44100 default (no throw, no GB).
+  for (const bad of [NaN, Infinity, -Infinity, 'bad', undefined, null]) {
+    const c = render({ osc: 'sine', freq: 1 }, { sampleRate: bad, duration: 0.01 });
+    ok(c.length === Math.round(44100 * (0.01 + 0.1)), `non-finite sampleRate ${String(bad)} → default 44100 (got ${c.length})`);
+  }
+
+  // Non-finite duration falls back to the 0.3 default.
+  for (const bad of [NaN, Infinity, -Infinity]) {
+    const c = render({ osc: 'sine', freq: 1 }, { sampleRate: 10, duration: bad });
+    ok(c.length === Math.round(10 * (0.3 + 0.1)), `non-finite duration ${String(bad)} → default 0.3 (got ${c.length})`);
+  }
+
+  // Finite out-of-range duration clamps to [0, 3600] (not default, not unbounded).
+  const big = render({ osc: 'sine', freq: 1 }, { sampleRate: 10, duration: 1e6 });
+  ok(big.length === Math.round(10 * (3600 + 0.1)), `huge duration clamps to 3600 s (got ${big.length})`);
+
+  // sampleRate floor is 1 (0 / negative clamp up, not down to an empty buffer).
+  const floor = render({ osc: 'sine', freq: 1 }, { sampleRate: 0, duration: 0.1 });
+  ok(floor.length === Math.max(1, Math.round(1 * (0.1 + 0.1))), `sampleRate 0 clamps to 1 (got ${floor.length})`);
+}
+
 if (fail) { console.error(`synthkit M1: ${fail} FAILED, ${pass} passed`); process.exit(1); }
 console.log(`synthkit M1: ${pass} passed`);
