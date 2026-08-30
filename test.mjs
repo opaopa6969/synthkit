@@ -67,6 +67,26 @@ throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render
   ok(zeroEnv.every((v) => Number.isFinite(v) && v === 0.5), 'zero-length ADSR stages render the sustain level');
 }
 
+// Releasing a note during the ATTACK phase must not jump. The envelope continues
+// the attack ramp up to note-off, then releases from that held value (not from
+// the sustain level) — so the amplitude is continuous across the release
+// boundary. Regression guard for the click/pop described in issue #10.
+{
+  const buf = render({
+    osc: 'square', freq: 0, gain: 1,
+    env: { attack: 0.1, decay: 0, sustain: 0, release: 0.1 }
+  }, { sampleRate: 44100, duration: 0.05 });
+  // Note-off at t=0.05 (mid-attack); release ramp starts there from amp ≈ 0.5.
+  const iOff = Math.round(0.05 * 44100);
+  const ampAtOff = buf[iOff];
+  ok(Math.abs(ampAtOff - 0.5) < 1e-3, `release starts from the attack value at note-off (got ${ampAtOff.toFixed(4)}, want ≈0.5)`);
+  // No discontinuity anywhere in the buffer (max sample-to-sample step is tiny).
+  let maxStep = 0;
+  for (let i = 1; i < buf.length; i++) maxStep = Math.max(maxStep, Math.abs(buf[i] - buf[i - 1]));
+  ok(maxStep < 1e-3, `no release-boundary discontinuity (max |Δsample| = ${maxStep.toExponential(3)})`);
+  ok(buf.every(Number.isFinite), 'released-during-attack buffer stays finite');
+}
+
 // Level inputs are saturated to their documented 0..1 range so invalid specs
 // cannot produce a clipping buffer or invert the signal.
 {

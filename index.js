@@ -84,6 +84,17 @@ function clamp01(x) {
 // ADSR envelope — amplitude ∈ [0, 1] at time t (seconds), given a note that is
 // held for `duration` seconds. attack→decay→sustain (held) then release.
 // ---------------------------------------------------------------------------
+// Envelope value during the HELD phase (attack → decay → sustain), independent
+// of when the note is released. Factored out so the release ramp can start from
+// the value the envelope actually held at note-off (t = duration), not from the
+// sustain level — which keeps the amplitude continuous across the release
+// boundary even when the note is released during attack or decay.
+function heldAmp(a, d, s, t) {
+  if (t < a) return a > 0 ? t / a : 1;                       // attack: 0 → 1
+  if (t < a + d) return d > 0 ? 1 - (1 - s) * ((t - a) / d) : s; // decay: 1 → s
+  return s;                                                  // sustain: hold at s
+}
+
 function adsrAmp(env, t, duration) {
   const a = env.attack  ?? 0.01;
   const d = env.decay   ?? 0.05;
@@ -91,12 +102,16 @@ function adsrAmp(env, t, duration) {
   const r = env.release ?? 0.1;
 
   if (t < 0) return 0;
-  if (t < a) return a > 0 ? t / a : 1;                 // attack: 0 → 1
-  if (t < a + d) return d > 0 ? 1 - (1 - s) * ((t - a) / d) : s; // decay: 1 → s
-  if (t < duration) return s;                          // sustain: hold at s
-  const rt = t - duration;                             // release: s → 0
-  if (rt < r) return r > 0 ? s * (1 - rt / r) : 0;
-  return 0;
+  // Release begins at note-off (t = duration). The release ramp anchors on the
+  // amplitude held at that instant (attack/decay/sustain value), so the envelope
+  // is continuous across the boundary regardless of which phase was active.
+  if (t >= duration) {
+    const amp0 = heldAmp(a, d, s, duration);
+    const rt = t - duration;                             // release: amp0 → 0
+    if (rt < r) return r > 0 ? amp0 * (1 - rt / r) : 0;
+    return 0;
+  }
+  return heldAmp(a, d, s, t);
 }
 
 // total tail length of a note = its held duration + its release time.
