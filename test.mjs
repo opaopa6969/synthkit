@@ -212,5 +212,36 @@ for (const osc of ['saw', 'square', 'triangle']) {
   ok(fin && p <= 1 && p > 0.3, `${osc} renders finite, non-clipping, audible (peak ${p.toFixed(3)})`);
 }
 
+// Phase wrap must cover freq >= sampleRate. The old `phase -= 1` only subtracted
+// once, so for dPhase >= 2 (freq >= 2*sampleRate) the phase stayed >= 1 and the
+// square oscillator collapsed to a constant -1. Regression guard for issue #11.
+{
+  // dPhase = 1.5: phase visits 0 → 1.5 → 0.5 → 2.0 → 0.0 … so square alternates
+  // 1, -1, 1, -1 (not the pre-fix collapse to 1, -1, -1, -1).
+  const b = render({
+    osc: 'square', freq: 1.5 * 10, gain: 1,
+    env: { attack: 0, decay: 0, sustain: 1, release: 0 }
+  }, { sampleRate: 10, duration: 0.4 });
+  const seq = Array.from(b).map((v) => (v > 0 ? '+' : '-'));
+  ok(seq.join('') === '+-+-', `square at freq=1.5*sampleRate alternates (got ${seq.join('')})`);
+
+  // dPhase = 2: phase wraps to 0 every sample → square stays at the phase-0
+  // value (+1), instead of collapsing to -1.
+  const c = render({
+    osc: 'square', freq: 2 * 10, gain: 1,
+    env: { attack: 0, decay: 0, sustain: 1, release: 0 }
+  }, { sampleRate: 10, duration: 0.4 });
+  ok(c.every((v) => v === 1), 'square at freq=2*sampleRate does not collapse to -1');
+
+  // All oscillators stay finite and in [-1,1] at extreme freq.
+  for (const osc of ['sine', 'saw', 'square', 'triangle']) {
+    const d = render({
+      osc, freq: 10 * 10, gain: 1,
+      env: { attack: 0, decay: 0, sustain: 1, release: 0 }
+    }, { sampleRate: 10, duration: 0.4 });
+    ok(d.every((v) => Number.isFinite(v) && Math.abs(v) <= 1), `${osc} at freq=10*sampleRate stays finite and in [-1,1]`);
+  }
+}
+
 if (fail) { console.error(`synthkit M1: ${fail} FAILED, ${pass} passed`); process.exit(1); }
 console.log(`synthkit M1: ${pass} passed`);
