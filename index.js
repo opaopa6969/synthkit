@@ -153,7 +153,7 @@ export function render(spec = {}, opts = {}) {
     const amp = adsrAmp(env, t, hold);
     out[i] = oscSample(type, phase, rng) * amp * gain;
     phase += dPhase;
-    if (phase >= 1) phase -= 1;                 // wrap to keep phase in [0,1)
+    if (phase >= 1) phase %= 1;                 // wrap to [0,1) — single subtract only handles dPhase < 2; modulo covers freq >= sampleRate so the oscillator doesn't collapse
   }
   return out;
 }
