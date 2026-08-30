@@ -73,6 +73,13 @@ function oscSample(type, phase, rng) {
   }
 }
 
+// Clamp to [0,1]. NaN compares false in Math.min/max and would propagate, so
+// it is normalised to 0 (DESIGN.md L66 "clamped to that range" + L144 finiteness).
+// Finite values (incl. Infinity) saturate via Math.min/max as before.
+function clamp01(x) {
+  return Number.isNaN(x) ? 0 : Math.min(1, Math.max(0, x));
+}
+
 // ---------------------------------------------------------------------------
 // ADSR envelope — amplitude ∈ [0, 1] at time t (seconds), given a note that is
 // held for `duration` seconds. attack→decay→sustain (held) then release.
@@ -80,7 +87,7 @@ function oscSample(type, phase, rng) {
 function adsrAmp(env, t, duration) {
   const a = env.attack  ?? 0.01;
   const d = env.decay   ?? 0.05;
-  const s = Math.min(1, Math.max(0, env.sustain ?? 0.7)); // sustain LEVEL (0..1), not a time
+  const s = clamp01(env.sustain ?? 0.7); // sustain LEVEL (0..1), not a time
   const r = env.release ?? 0.1;
 
   if (t < 0) return 0;
@@ -115,7 +122,7 @@ export function render(spec = {}, opts = {}) {
   const sampleRate = opts.sampleRate ?? 44100;
   const hold = opts.duration ?? 0.3;            // seconds the note is held
   const env = spec.env ?? {};
-  const gain = Math.min(1, Math.max(0, spec.gain ?? 0.9));
+  const gain = clamp01(spec.gain ?? 0.9);
   const type = spec.osc ?? 'sine';
   const freq = note(spec.freq ?? 'A4');
   const rng = mulberry32((spec.seed ?? 1) >>> 0);
