@@ -1,4 +1,4 @@
-import { mulberry32 } from 'kazu';
+import { clamp01, mulberry32 } from 'kazu';
 // synthkit — pure, deterministic, headless-testable procedural audio engine.
 //
 // GOAL: describe sound as PLAIN DATA (a "synth spec") and turn it into either
@@ -64,13 +64,6 @@ function oscSample(type, phase, rng) {
     case 'noise':    return rng() * 2 - 1;
     default: throw new Error(`synthkit: unknown osc type "${type}"`);
   }
-}
-
-// Clamp to [0,1]. NaN compares false in Math.min/max and would propagate, so
-// it is normalised to 0 (DESIGN.md L66 "clamped to that range" + L144 finiteness).
-// Finite values (incl. Infinity) saturate via Math.min/max as before.
-function clamp01(x) {
-  return Number.isNaN(x) ? 0 : Math.min(1, Math.max(0, x));
 }
 
 // Coerce a numeric option to a finite value: NaN / Infinity / non-numbers fall
