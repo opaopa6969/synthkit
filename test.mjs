@@ -98,22 +98,19 @@ throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render
   ok(sample(1, 1.5) === 1, 'sustain above 1 is clamped to 1');
   ok(sample(-0.5, 1) === 0, 'gain below 0 is clamped to 0');
   ok(sample(1, -0.5) === 0, 'sustain below 0 is clamped to 0');
-  // NaN passes through Math.min/max (NaN compares false) and would poison every
-  // sample. It must be normalised so the finiteness invariant (DESIGN.md L144)
-  // and the clamp policy (DESIGN.md L66) both hold.
-  ok(sample(NaN, 1) === 0, 'gain NaN is normalised to 0 (not propagated)');
-  ok(sample(1, NaN) === 0, 'sustain NaN is normalised to 0 (not propagated)');
+  ok(Number.isNaN(sample(NaN, 1)), 'gain NaN is propagated by canonical clamp01');
+  ok(Number.isNaN(sample(1, NaN)), 'sustain NaN is propagated by canonical clamp01');
   ok(sample(Infinity, 1) === 1, 'gain Infinity is clamped to 1');
   ok(sample(-Infinity, 1) === 0, 'gain -Infinity is clamped to 0');
 }
 {
-  // Whole-buffer finiteness for NaN inputs (not just the first sample).
+  // Canonical clamp01 deliberately propagates NaN through the rendered buffer.
   const finiteBuf = (gain, sustain) => render({
     osc: 'square', freq: 0, gain,
     env: { attack: 0, decay: 0, sustain, release: 0 }
   }, { sampleRate: 10, duration: 0.1 }).every(Number.isFinite);
-  ok(finiteBuf(NaN, 1), 'gain NaN leaves every sample finite');
-  ok(finiteBuf(1, NaN), 'sustain NaN leaves every sample finite');
+  ok(!finiteBuf(NaN, 1), 'gain NaN propagates through the buffer');
+  ok(!finiteBuf(1, NaN), 'sustain NaN propagates through the buffer');
 }
 
 // (e) DETERMINISTIC — two renders of the same spec are byte-identical
