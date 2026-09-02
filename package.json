@@ -5,12 +5,27 @@
   "type": "module",
   "main": "index.js",
   "exports": "./index.js",
-  "files": ["index.js"],
+  "files": [
+    "index.js"
+  ],
   "scripts": {
     "test": "node test.mjs"
   },
-  "keywords": ["audio", "synth", "procedural", "music", "sfx", "web-audio"],
+  "keywords": [
+    "audio",
+    "synth",
+    "procedural",
+    "music",
+    "sfx",
+    "web-audio"
+  ],
   "license": "MIT",
   "author": "opaopa6969",
-  "repository": { "type": "git", "url": "https://github.com/opaopa6969/synthkit.git" }
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/opaopa6969/synthkit.git"
+  },
+  "dependencies": {
+    "kazu": "git+https://github.com/opaopa6969/kazu.git#v1.0.0"
+  }
 }
