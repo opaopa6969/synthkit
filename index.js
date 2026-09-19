@@ -1,4 +1,4 @@
-import { clamp01, mulberry32 } from 'kazu';
+import { clamp01, clampSym, mulberry32 } from 'kazu';
 // synthkit — pure, deterministic, headless-testable procedural audio engine.
 //
 // GOAL: describe sound as PLAIN DATA (a "synth spec") and turn it into either
@@ -18,8 +18,9 @@ import { clamp01, mulberry32 } from 'kazu';
 // [-1, 1]. The host (a game, a test, a Node script) decides what to do with it.
 //
 // This file is the M1 core: oscillator (sine/saw/square/triangle) through an
-// ADSR envelope → Float32Array, plus equal-temperament note(name)→Hz. The
-// sequencer, filters and Web-Audio connect() are planned for M2+.
+// ADSR envelope → Float32Array, plus equal-temperament note(name)→Hz — and the
+// first M2 slice, sequence(): a list of notes/rests rendered over time. Filters,
+// music-theory helpers and Web-Audio connect() are planned for M2+.
 
 // ---------------------------------------------------------------------------
 // Music theory — note(name) → frequency (Hz). Equal temperament, A4 = 440 Hz.
@@ -78,6 +79,20 @@ function finiteOpt(x, def, min, max) {
   return Math.min(max, Math.max(min, x));
 }
 
+// Same coercion for the ADSR *time* fields (attack / decay / release, seconds).
+// A malformed `release` is not just cosmetic: the buffer length is
+// `sampleRate * (duration + release)`, so `release: NaN` silently produced a
+// ZERO-length buffer, `release: -1` a 1-sample one (breaking the documented
+// length contract of both render() and sequence()), and `release: 1e5` escaped
+// the bound that sampleRate/duration already have and threw
+// `RangeError: Invalid typed array length`. Non-numbers / NaN / Infinity fall
+// back to the documented default; finite values are clamped to the same
+// physically meaningful window as `duration`.
+const ENV_TIME_MAX = 3600;
+function envTime(x, def) {
+  return finiteOpt(x, def, 0, ENV_TIME_MAX);
+}
+
 // ---------------------------------------------------------------------------
 // ADSR envelope — amplitude ∈ [0, 1] at time t (seconds), given a note that is
 // held for `duration` seconds. attack→decay→sustain (held) then release.
@@ -94,10 +109,10 @@ function heldAmp(a, d, s, t) {
 }
 
 function adsrAmp(env, t, duration) {
-  const a = env.attack  ?? 0.01;
-  const d = env.decay   ?? 0.05;
+  const a = envTime(env.attack, 0.01);
+  const d = envTime(env.decay, 0.05);
   const s = clamp01(env.sustain ?? 0.7); // sustain LEVEL (0..1), not a time
-  const r = env.release ?? 0.1;
+  const r = envTime(env.release, 0.1);
 
   if (t < 0) return 0;
   // Release begins at note-off (t = duration). The release ramp anchors on the
@@ -114,7 +129,7 @@ function adsrAmp(env, t, duration) {
 
 // total tail length of a note = its held duration + its release time.
 function noteTail(env, duration) {
-  return duration + (env.release ?? 0.1);
+  return duration + envTime(env.release, 0.1);
 }
 
 // ---------------------------------------------------------------------------
@@ -157,11 +172,76 @@ export function render(spec = {}, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// TODO (M2) — sequencer + music helpers:
+// sequence(spec, opts) → Float32Array  [M2 slice 1, PURE / OFFLINE]
+//
+// Render a list of notes over time: every step is one render() call whose
+// buffer is summed into the output at the step's start, so release tails
+// overlap the next step exactly like a monophonic-per-step synth with a
+// polyphonic tail. Same spec as render() (osc / env / gain / seed) plus:
+//
+// spec.seq: [ 'C4', 'E4', null, 440, … ]   note name | Hz | null/undefined = rest
+// opts: {
+//   sampleRate = 44100,
+//   step = 0.25,   seconds per step (finite, 0..3600)
+//   gate = 1,      fraction of the step the note is HELD (0..1); the rest of
+//                  the step is the release tail (+ silence), i.e. staccato < 1
+// }
+//
+// Output length = round(sampleRate * (seq.length * step + release)): the musical
+// length of the pattern plus the last note's release tail, independent of gate.
+//
+// Overlapping tails are SUMMED. To keep the [-1, 1] invariant WITHOUT clipping
+// distortion, every voice is scaled by 1 / (max simultaneous voices), where the
+// voice count comes from how far a note's hold + release spills into later
+// steps (polyphony headroom). If hold + release <= step (e.g. staccato gate or
+// a short release) nothing overlaps and the level equals render()'s. A final
+// clamp is only a safety net for sub-sample rounding at tail edges.
+// ---------------------------------------------------------------------------
+export function sequence(spec = {}, opts = {}) {
+  const sampleRate = finiteOpt(opts.sampleRate, 44100, 1, 192000);
+  const step = finiteOpt(opts.step, 0.25, 0, 3600);
+  const gate = finiteOpt(opts.gate, 1, 0, 1);
+  const seq = Array.isArray(spec.seq) ? spec.seq : [];
+  const env = spec.env ?? {};
+  const hold = step * gate;
+
+  const release = envTime(env.release, 0.1);
+
+  const totalSec = seq.length * step + release;
+  const n = Math.max(1, Math.round(sampleRate * totalSec));
+  const out = new Float32Array(n);
+
+  // Polyphony headroom: how many LATER steps does one note (hold + release
+  // tail) still sound into? That many extra voices can stack on top of a step's
+  // own note, so scale each voice by 1 / (1 + extra) and the sum stays <= 1.
+  const spill = hold + release - step;
+  let extra = 0;
+  if (spill > 0) extra = step > 0 ? Math.ceil(spill / step) : seq.length - 1;
+  extra = Math.max(0, Math.min(seq.length - 1, extra));
+  const headroom = 1 / (1 + extra);
+
+  for (let i = 0; i < seq.length; i++) {
+    const freq = seq[i];
+    if (freq === null || freq === undefined) continue;        // rest: nothing to add
+    const voice = render({ ...spec, freq }, { sampleRate, duration: hold });
+    // Start AND end are rounded from absolute time, so a voice occupies exactly
+    // [round(t0*sr), round(t1*sr)). Rounding the voice length instead could make
+    // two back-to-back notes (release 0, gate 1) share one boundary sample at
+    // full level — the sum would then exceed the headroom bound.
+    const at = Math.round(i * step * sampleRate);
+    const end = Math.min(n, Math.round((i * step + hold + release) * sampleRate), at + voice.length);
+    for (let j = at; j < end; j++) out[j] += voice[j - at] * headroom;
+  }
+  for (let i = 0; i < n; i++) out[i] = clampSym(out[i], 1); // safety net only
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// TODO (M2) — music helpers (sequence() above is the first M2 slice):
 //   export function scale(root, mode)        → [Hz, …]
 //   export function chord(root, quality)     → [Hz, …]
 //   export function progression(key, roman)  → [[Hz…], …]
-//   export function sequence(spec, opts)     → Float32Array  (notes over time)
+//   sequence(): per-step velocity, PolyBLEP band-limiting for saw/square
 // TODO (M2) — filters: lowpass(buf, cutoff, sr) / highpass(...) (one-pole/biquad)
 // TODO (M3) — SFX presets: clack / riichi / tsumo / ron / doraFlip (intensity, pitch)
 // TODO (M4) — live Web Audio:
