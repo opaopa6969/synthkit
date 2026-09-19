@@ -46,6 +46,30 @@ export function note(name) {
 }
 
 // ---------------------------------------------------------------------------
+// scale(root, mode) → [Hz, …]  — the seven diatonic-mode degrees from root,
+// equal temperament (same math as note()). root is a note name or Hz number
+// (anything note() accepts); mode defaults to 'major'.
+// ---------------------------------------------------------------------------
+const MODE_INTERVALS = {
+  ionian:     [0, 2, 4, 5, 7, 9, 11],
+  dorian:     [0, 2, 3, 5, 7, 9, 10],
+  phrygian:   [0, 1, 3, 5, 7, 8, 10],
+  lydian:     [0, 2, 4, 6, 7, 9, 11],
+  mixolydian: [0, 2, 4, 5, 7, 9, 10],
+  aeolian:    [0, 2, 3, 5, 7, 8, 10],
+  locrian:    [0, 1, 3, 5, 6, 8, 10],
+};
+const MODE_ALIAS = { major: 'ionian', minor: 'aeolian' };
+
+export function scale(root, mode = 'major') {
+  const name = MODE_ALIAS[mode] ?? mode;
+  const intervals = MODE_INTERVALS[name];
+  if (!intervals) throw new Error(`synthkit: unknown mode "${mode}"`);
+  const base = note(root);
+  return intervals.map((semitones) => base * Math.pow(2, semitones / 12));
+}
+
+// ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32) — for noise oscillators. No Math.random anywhere.
 // ---------------------------------------------------------------------------
 
@@ -237,8 +261,7 @@ export function sequence(spec = {}, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// TODO (M2) — music helpers (sequence() above is the first M2 slice):
-//   export function scale(root, mode)        → [Hz, …]
+// TODO (M2) — music helpers (sequence() + scale() above are done so far):
 //   export function chord(root, quality)     → [Hz, …]
 //   export function progression(key, roman)  → [[Hz…], …]
 //   sequence(): per-step velocity, PolyBLEP band-limiting for saw/square

@@ -8,10 +8,11 @@ browser. Zero runtime dependencies, single-file ESM, no `Math.random` (seeded),
 MIT. Built to drop into a game — augment Web-Audio SFX and drive dynamic BGM
 from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 
-> **Status: M1 + first M2 slice.** Oscillators (`sine` / `saw` / `square` /
+> **Status: M1 + M2 in progress.** Oscillators (`sine` / `saw` / `square` /
 > `triangle` / `noise`) → ADSR envelope → offline `render`, `note(name)` → Hz,
-> and `sequence()` — a list of notes / rests rendered over time. Filters,
-> music-theory helpers and live `connect()` are planned for M2–M4. Every
+> `sequence()` — a list of notes / rests rendered over time — and
+> `scale(root, mode)` — the 7 diatonic-mode degrees from a root. Filters,
+> `chord()` / `progression()` and live `connect()` are planned for M2–M4. Every
 > render is a clean, non-clipping, frequency-correct buffer that the test
 > suite verifies by analyzing the samples (per-step pitch via windowed DFT).
 
@@ -21,8 +22,9 @@ from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 render(spec, { sampleRate = 44100, duration = 0.3 }) → Float32Array   // current: offline, pure
 sequence(spec, { sampleRate = 44100, step = 0.25, gate = 1 }) → Float32Array // current: notes over time
 note(name) → Hz                                                 // current: 'A4' → 440
+scale(root, mode = 'major') → [Hz, …]                            // current: 7 diatonic-mode degrees
 connect(spec, audioContext) → { output, start, stop }           // planned: live Web Audio [M4]
-scale(root, mode) / chord(root, quality) / filters              // planned [M2]
+chord(root, quality) / filters                                  // planned [M2]
 ```
 
 A **spec** is plain data:
@@ -79,6 +81,24 @@ const buf = sequence(
 `seq` entries are note names, raw Hz numbers, or `null` / `undefined` for a
 rest. `gate` (0..1) is the fraction of each step the note is held; the rest of
 the step is release tail / silence.
+
+### Scale (music theory — offline, pure)
+
+```js
+import { scale, sequence } from 'synthkit';
+
+scale('C4', 'major'); // [261.63, 293.66, 329.63, 349.23, 392.00, 440.00, 493.88] (Hz)
+scale('A4', 'minor'); // the seven degrees of A natural minor, starting at A4
+
+// drop straight into sequence()'s seq — a scale run:
+sequence({ osc: 'sine', env, seq: scale('C4', 'major') }, { step: 0.15 });
+```
+
+`mode` is one of `'major'` (alias for `'ionian'`), `'minor'` (alias for
+`'aeolian'`), or any of the seven diatonic modes by name (`'dorian'`,
+`'phrygian'`, `'lydian'`, `'mixolydian'`, `'locrian'`). `root` accepts a note
+name or a raw Hz number, same as `spec.freq`. Returns the 7 scale-degree
+frequencies (equal temperament), not including the octave repeat.
 
 ### Web Audio (browser) — *planned for M4*
 
