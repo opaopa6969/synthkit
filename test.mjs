@@ -2,7 +2,7 @@
 // audio hardware), is deterministic, and renders a clean, non-clipping note.
 // Headless QA for audio = ANALYZING the buffer (length / peak / RMS / spectrum)
 // since we cannot "listen". Run:  node test.mjs   (or: npm test)
-import { render, note, sequence, scale } from './index.js';
+import { render, note, sequence, scale, chord } from './index.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error('  ✗ ' + msg); } };
@@ -100,6 +100,57 @@ throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render
     { sampleRate: 10, step: 1 });
   ok(run.length === 70 && run.every((v) => Number.isFinite(v) && Math.abs(v) <= 1),
     `scale('C4', 'major') feeds sequence()'s seq without producing NaN or clipping (got ${run.length} samples)`);
+}
+
+// chord(root, quality) — stacked chord tones from root, equal temperament.
+// Checked against note() directly, same style as the scale() tests above.
+{
+  const degrees = (root, names) => names.map((n) => note(n));
+
+  const cMajor = chord('C4', 'major');
+  const cMajorExpected = degrees('C4', ['C4', 'E4', 'G4']);
+  ok(cMajor.length === 3, `chord() triad returns 3 tones (got ${cMajor.length})`);
+  ok(cMajor.every((hz, i) => Math.abs(hz - cMajorExpected[i]) < 1e-9),
+    `chord('C4', 'major') matches C E G (got ${cMajor.map((h) => h.toFixed(2))})`);
+
+  const cMinor = chord('C4', 'minor');
+  const cMinorExpected = degrees('C4', ['C4', 'Eb4', 'G4']);
+  ok(cMinor.every((hz, i) => Math.abs(hz - cMinorExpected[i]) < 1e-9),
+    `chord('C4', 'minor') matches C Eb G (got ${cMinor.map((h) => h.toFixed(2))})`);
+
+  const cDom7 = chord('C4', 'dominant7');
+  const cDom7Expected = degrees('C4', ['C4', 'E4', 'G4', 'Bb4']);
+  ok(cDom7.length === 4 && cDom7.every((hz, i) => Math.abs(hz - cDom7Expected[i]) < 1e-9),
+    `chord('C4', 'dominant7') matches C E G Bb (got ${cDom7.map((h) => h.toFixed(2))})`);
+
+  // short aliases resolve to the same tones as their full quality name.
+  ok(chord('C4', 'maj').every((hz, i) => hz === cMajor[i]), "quality 'maj' is an alias for 'major'");
+  ok(chord('C4', 'min').every((hz, i) => hz === cMinor[i]), "quality 'min' is an alias for 'minor'");
+  ok(chord('C4', 'm').every((hz, i) => hz === cMinor[i]), "quality 'm' is an alias for 'minor'");
+  ok(chord('C4', '7').every((hz, i) => hz === cDom7[i]), "quality '7' is an alias for 'dominant7'");
+
+  // the remaining qualities are reachable and each tone is a valid, finite,
+  // positive frequency (full correctness of every interval set would just
+  // re-state CHORD_INTERVALS; this proves they resolve).
+  for (const quality of ['diminished', 'augmented', 'major7', 'minor7', 'diminished7', 'halfDiminished7']) {
+    const tones = chord('C4', quality);
+    ok(tones.length >= 3 && tones.every((hz) => Number.isFinite(hz) && hz > 0),
+      `chord('C4', '${quality}') returns finite, positive frequencies`);
+  }
+
+  // default quality is 'major'.
+  ok(chord('C4').every((hz, i) => hz === cMajor[i]), "chord() with no quality defaults to 'major'");
+
+  // root accepts a raw Hz number too, same as scale()/spec.freq.
+  ok(chord(440, 'major')[0] === 440, 'chord() accepts a numeric Hz root');
+
+  throws(() => chord('C4', 'blues'), /unknown chord quality "blues"/, 'chord() rejects unknown qualities');
+
+  // chord() output drops straight into sequence()'s seq (a block-chord arp).
+  const run = sequence({ osc: 'sine', env: { attack: 0, decay: 0, sustain: 1, release: 0 }, seq: chord('C4', 'major') },
+    { sampleRate: 10, step: 1 });
+  ok(run.length === 30 && run.every((v) => Number.isFinite(v) && Math.abs(v) <= 1),
+    `chord('C4', 'major') feeds sequence()'s seq without producing NaN or clipping (got ${run.length} samples)`);
 }
 
 // Zero-length ADSR stages transition immediately and remain finite.
