@@ -12,9 +12,10 @@ from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 > `triangle` / `noise`) → ADSR envelope → offline `render`, `note(name)` → Hz,
 > `sequence()` — a list of notes / rests rendered over time — `scale(root,
 > mode)` — the 7 diatonic-mode degrees from a root — `chord(root, quality)` —
-> stacked-third chord tones from a root — and `progression(root, roman)` —
-> major-key diatonic triads. Filters and live `connect()` are planned for
-> M2–M4. Every render is a clean,
+> stacked-third chord tones from a root — `progression(root, roman)` —
+> major-key diatonic triads — and deterministic one-pole `lowpass()` /
+> `highpass()` offline filters. Plain-data filter integration and live
+> `connect()` are planned for M2–M4. Every render is a clean,
 > non-clipping, frequency-correct buffer that the test suite verifies by
 > analyzing the samples (per-step pitch via windowed DFT).
 
@@ -27,8 +28,9 @@ note(name) → Hz                                                 // current: 'A
 scale(root, mode = 'major') → [Hz, …]                            // current: 7 diatonic-mode degrees
 chord(root, quality = 'major') → [Hz, …]                         // current: stacked-third chord tones
 progression(root, roman) → [[Hz, …], …]                        // current: major-key diatonic triads
+lowpass(buffer, cutoff, sampleRate = 44100) → Float32Array      // current: one-pole offline filter
+highpass(buffer, cutoff, sampleRate = 44100) → Float32Array     // current: complementary one-pole filter
 connect(spec, audioContext) → { output, start, stop }           // planned: live Web Audio [M4]
-filters                                                          // planned [M2]
 ```
 
 A **spec** is plain data:
@@ -142,6 +144,22 @@ boundaries and input order; call `.flat()` to feed the tones to `sequence()` as
 an arpeggio. Minor keys, sevenths, inversions, and altered/borrowed chords are
 not part of this API slice.
 
+### Filters (offline, pure)
+
+```js
+import { render, lowpass, highpass } from 'synthkit';
+
+const dry = render({ osc: 'saw', freq: 'A3' });
+const warm = lowpass(dry, 1200);       // attenuate frequencies above 1200 Hz
+const bright = highpass(dry, 300);     // attenuate frequencies below 300 Hz
+```
+
+Both functions return a new same-length `Float32Array` and do not mutate the
+source buffer. `cutoff` is in Hz and must be between 0 and Nyquist
+(`sampleRate / 2`); `sampleRate` defaults to 44100 Hz. The first slice is a
+deterministic one-pole filter. Biquad resonance and plain-data `spec.filter`
+composition remain planned rather than widening this API prematurely.
+
 ### Web Audio (browser) — *planned for M4*
 
 ```js
@@ -157,7 +175,7 @@ voice.start();
 
 ```bash
 node test.mjs      # or: npm test
-# → synthkit M1: 129 passed
+# → synthkit M1+M2: 143 passed
 ```
 
 The test renders an A4 sine and asserts the buffer's length, finiteness, peak
