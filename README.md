@@ -10,11 +10,12 @@ from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 
 > **Status: M1 + M2 in progress.** Oscillators (`sine` / `saw` / `square` /
 > `triangle` / `noise`) → ADSR envelope → offline `render`, `note(name)` → Hz,
-> `sequence()` — a list of notes / rests rendered over time — and
-> `scale(root, mode)` — the 7 diatonic-mode degrees from a root. Filters,
-> `chord()` / `progression()` and live `connect()` are planned for M2–M4. Every
-> render is a clean, non-clipping, frequency-correct buffer that the test
-> suite verifies by analyzing the samples (per-step pitch via windowed DFT).
+> `sequence()` — a list of notes / rests rendered over time — `scale(root,
+> mode)` — the 7 diatonic-mode degrees from a root — and `chord(root,
+> quality)` — stacked-third chord tones from a root. Filters, `progression()`
+> and live `connect()` are planned for M2–M4. Every render is a clean,
+> non-clipping, frequency-correct buffer that the test suite verifies by
+> analyzing the samples (per-step pitch via windowed DFT).
 
 ## API
 
@@ -23,8 +24,9 @@ render(spec, { sampleRate = 44100, duration = 0.3 }) → Float32Array   // curre
 sequence(spec, { sampleRate = 44100, step = 0.25, gate = 1 }) → Float32Array // current: notes over time
 note(name) → Hz                                                 // current: 'A4' → 440
 scale(root, mode = 'major') → [Hz, …]                            // current: 7 diatonic-mode degrees
+chord(root, quality = 'major') → [Hz, …]                         // current: stacked-third chord tones
 connect(spec, audioContext) → { output, start, stop }           // planned: live Web Audio [M4]
-chord(root, quality) / filters                                  // planned [M2]
+progression(key, roman) / filters                                // planned [M2]
 ```
 
 A **spec** is plain data:
@@ -99,6 +101,25 @@ sequence({ osc: 'sine', env, seq: scale('C4', 'major') }, { step: 0.15 });
 `'phrygian'`, `'lydian'`, `'mixolydian'`, `'locrian'`). `root` accepts a note
 name or a raw Hz number, same as `spec.freq`. Returns the 7 scale-degree
 frequencies (equal temperament), not including the octave repeat.
+
+### Chord (music theory — offline, pure)
+
+```js
+import { chord, sequence } from 'synthkit';
+
+chord('C4', 'major');      // [261.63, 329.63, 392.00] (Hz) — C E G
+chord('A4', 'minor7');     // A C E G, one octave up where it wraps
+
+// drop straight into sequence()'s seq — a block-chord arp:
+sequence({ osc: 'sine', env, seq: chord('C4', 'dominant7') }, { step: 0.15 });
+```
+
+`quality` is one of the triads `'major'` / `'minor'` / `'diminished'` /
+`'augmented'`, or the four-note sevenths `'major7'` / `'minor7'` /
+`'dominant7'` / `'diminished7'` / `'halfDiminished7'`, plus short aliases
+(`'maj'`, `'min'` / `'m'`, `'dim'`, `'aug'`, `'7'` for dominant7, …). `root`
+accepts a note name or a raw Hz number, same as `spec.freq` / `scale()`.
+Returns the chord tones (equal temperament), stacked from the root.
 
 ### Web Audio (browser) — *planned for M4*
 

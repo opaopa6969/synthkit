@@ -70,6 +70,36 @@ export function scale(root, mode = 'major') {
 }
 
 // ---------------------------------------------------------------------------
+// chord(root, quality) → [Hz, …]  — stacked-third chord tones from root, equal
+// temperament (same math as scale()/note()). root is a note name or Hz number
+// (anything note() accepts); quality defaults to 'major'.
+// ---------------------------------------------------------------------------
+const CHORD_INTERVALS = {
+  major:           [0, 4, 7],
+  minor:           [0, 3, 7],
+  diminished:      [0, 3, 6],
+  augmented:       [0, 4, 8],
+  major7:          [0, 4, 7, 11],
+  minor7:          [0, 3, 7, 10],
+  dominant7:       [0, 4, 7, 10],
+  diminished7:     [0, 3, 6, 9],
+  halfDiminished7: [0, 3, 6, 10],
+};
+const CHORD_ALIAS = {
+  maj: 'major', min: 'minor', m: 'minor', dim: 'diminished', aug: 'augmented',
+  maj7: 'major7', min7: 'minor7', m7: 'minor7',
+  dom7: 'dominant7', '7': 'dominant7', dim7: 'diminished7', m7b5: 'halfDiminished7',
+};
+
+export function chord(root, quality = 'major') {
+  const name = CHORD_ALIAS[quality] ?? quality;
+  const intervals = CHORD_INTERVALS[name];
+  if (!intervals) throw new Error(`synthkit: unknown chord quality "${quality}"`);
+  const base = note(root);
+  return intervals.map((semitones) => base * Math.pow(2, semitones / 12));
+}
+
+// ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32) — for noise oscillators. No Math.random anywhere.
 // ---------------------------------------------------------------------------
 
@@ -261,8 +291,7 @@ export function sequence(spec = {}, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// TODO (M2) — music helpers (sequence() + scale() above are done so far):
-//   export function chord(root, quality)     → [Hz, …]
+// TODO (M2) — music helpers (sequence() + scale() + chord() above are done so far):
 //   export function progression(key, roman)  → [[Hz…], …]
 //   sequence(): per-step velocity, PolyBLEP band-limiting for saw/square
 // TODO (M2) — filters: lowpass(buf, cutoff, sr) / highpass(...) (one-pole/biquad)
