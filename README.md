@@ -11,9 +11,10 @@ from game state — but engine-agnostic. See [`DESIGN.md`](./DESIGN.md).
 > **Status: M1 + M2 in progress.** Oscillators (`sine` / `saw` / `square` /
 > `triangle` / `noise`) → ADSR envelope → offline `render`, `note(name)` → Hz,
 > `sequence()` — a list of notes / rests rendered over time — `scale(root,
-> mode)` — the 7 diatonic-mode degrees from a root — and `chord(root,
-> quality)` — stacked-third chord tones from a root. Filters, `progression()`
-> and live `connect()` are planned for M2–M4. Every render is a clean,
+> mode)` — the 7 diatonic-mode degrees from a root — `chord(root, quality)` —
+> stacked-third chord tones from a root — and `progression(root, roman)` —
+> major-key diatonic triads. Filters and live `connect()` are planned for
+> M2–M4. Every render is a clean,
 > non-clipping, frequency-correct buffer that the test suite verifies by
 > analyzing the samples (per-step pitch via windowed DFT).
 
@@ -25,8 +26,9 @@ sequence(spec, { sampleRate = 44100, step = 0.25, gate = 1 }) → Float32Array /
 note(name) → Hz                                                 // current: 'A4' → 440
 scale(root, mode = 'major') → [Hz, …]                            // current: 7 diatonic-mode degrees
 chord(root, quality = 'major') → [Hz, …]                         // current: stacked-third chord tones
+progression(root, roman) → [[Hz, …], …]                        // current: major-key diatonic triads
 connect(spec, audioContext) → { output, start, stop }           // planned: live Web Audio [M4]
-progression(key, roman) / filters                                // planned [M2]
+filters                                                          // planned [M2]
 ```
 
 A **spec** is plain data:
@@ -121,6 +123,25 @@ sequence({ osc: 'sine', env, seq: chord('C4', 'dominant7') }, { step: 0.15 });
 accepts a note name or a raw Hz number, same as `spec.freq` / `scale()`.
 Returns the chord tones (equal temperament), stacked from the root.
 
+### Progression (music theory — offline, pure)
+
+```js
+import { progression, sequence } from 'synthkit';
+
+const chords = progression('C4', ['I', 'vi', 'IV', 'V']);
+// C major, A minor, F major, G major as nested [Hz, …] arrays
+
+// Flatten chord boundaries for a deterministic arpeggio:
+sequence({ osc: 'sine', env, seq: chords.flat() }, { step: 0.15 });
+```
+
+This first progression slice supports the seven diatonic triads of a major
+key: `'I'`, `'ii'`, `'iii'`, `'IV'`, `'V'`, `'vi'`, and `'vii°'`. `root`
+accepts a note name or raw Hz number. The returned outer array preserves chord
+boundaries and input order; call `.flat()` to feed the tones to `sequence()` as
+an arpeggio. Minor keys, sevenths, inversions, and altered/borrowed chords are
+not part of this API slice.
+
 ### Web Audio (browser) — *planned for M4*
 
 ```js
@@ -136,7 +157,7 @@ voice.start();
 
 ```bash
 node test.mjs      # or: npm test
-# → synthkit M1: 88 passed
+# → synthkit M1: 129 passed
 ```
 
 The test renders an A4 sine and asserts the buffer's length, finiteness, peak

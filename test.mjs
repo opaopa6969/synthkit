@@ -2,7 +2,7 @@
 // audio hardware), is deterministic, and renders a clean, non-clipping note.
 // Headless QA for audio = ANALYZING the buffer (length / peak / RMS / spectrum)
 // since we cannot "listen". Run:  node test.mjs   (or: npm test)
-import { render, note, sequence, scale, chord } from './index.js';
+import { render, note, sequence, scale, chord, progression } from './index.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error('  ✗ ' + msg); } };
@@ -30,6 +30,7 @@ for (let i = 0; i < buf.length; i++) {
   if (a > peak) peak = a;
   sumSq += v * v;
 }
+
 const rms = Math.sqrt(sumSq / buf.length);
 
 // (a) length == sampleRate * (held duration + release tail)
@@ -151,6 +152,43 @@ throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render
     { sampleRate: 10, step: 1 });
   ok(run.length === 30 && run.every((v) => Number.isFinite(v) && Math.abs(v) <= 1),
     `chord('C4', 'major') feeds sequence()'s seq without producing NaN or clipping (got ${run.length} samples)`);
+}
+
+// progression(root, roman) — major-key diatonic triads composed from scale()
+// and chord(). The result preserves progression boundaries as nested chords.
+{
+  const pop = progression('C4', ['I', 'vi', 'IV', 'V']);
+  const expected = [
+    chord('C4', 'major'),
+    chord('A4', 'minor'),
+    chord('F4', 'major'),
+    chord('G4', 'major'),
+  ];
+  ok(pop.length === 4 && pop.every((tones, i) =>
+    tones.length === expected[i].length && tones.every((hz, j) => Math.abs(hz - expected[i][j]) < 1e-9)),
+  "progression('C4', ['I','vi','IV','V']) returns C-Am-F-G triads in input order");
+
+  const all = progression('C4', ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°']);
+  ok(all.length === 7 && all.every((tones) =>
+    tones.length === 3 && tones.every((hz) => Number.isFinite(hz) && hz > 0)),
+  'progression() resolves all seven major-key diatonic triads');
+  ok(all[6].every((hz, i) => Math.abs(hz - chord('B4', 'diminished')[i]) < 1e-9),
+    'progression() resolves vii° as the diminished leading-tone triad');
+
+  ok(progression(440, ['I'])[0][0] === 440, 'progression() accepts a numeric Hz root');
+  ok(progression('C4', []).length === 0, 'progression() accepts an empty progression');
+  throws(() => progression('C4', 'I-IV-V'), /progression roman must be an array/,
+    'progression() requires an array of Roman numerals');
+  throws(() => progression('C4', ['bVII']), /unknown roman numeral "bVII"/,
+    'progression() rejects unsupported Roman numerals');
+  throws(() => progression('C4', ['toString']), /unknown roman numeral "toString"/,
+    'progression() does not accept inherited object-property names as numerals');
+
+  // Flattening the chord boundaries gives sequence() a deterministic arpeggio.
+  const arp = sequence({ osc: 'sine', env: { attack: 0, decay: 0, sustain: 1, release: 0 }, seq: pop.flat() },
+    { sampleRate: 10, step: 1 });
+  ok(arp.length === 120 && arp.every((v) => Number.isFinite(v) && Math.abs(v) <= 1),
+    'progression().flat() feeds sequence() without producing NaN or clipping');
 }
 
 // Zero-length ADSR stages transition immediately and remain finite.

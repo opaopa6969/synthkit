@@ -100,6 +100,36 @@ export function chord(root, quality = 'major') {
 }
 
 // ---------------------------------------------------------------------------
+// progression(root, roman) → [[Hz, …], …] — diatonic triads in a major
+// key. Roman numerals carry the conventional major-key triad quality; the
+// existing scale() and chord() helpers remain the single source of pitch math.
+// ---------------------------------------------------------------------------
+const MAJOR_ROMAN_TRIADS = {
+  I:    [0, 'major'],
+  ii:   [1, 'minor'],
+  iii:  [2, 'minor'],
+  IV:   [3, 'major'],
+  V:    [4, 'major'],
+  vi:   [5, 'minor'],
+  'vii°': [6, 'diminished'],
+};
+
+export function progression(root, roman) {
+  if (!Array.isArray(roman)) {
+    throw new Error('synthkit: progression roman must be an array');
+  }
+  const degrees = scale(root, 'major');
+  return roman.map((numeral) => {
+    if (!Object.hasOwn(MAJOR_ROMAN_TRIADS, numeral)) {
+      throw new Error(`synthkit: unknown roman numeral "${numeral}"`);
+    }
+    const triad = MAJOR_ROMAN_TRIADS[numeral];
+    const [degree, quality] = triad;
+    return chord(degrees[degree], quality);
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Seeded PRNG (mulberry32) — for noise oscillators. No Math.random anywhere.
 // ---------------------------------------------------------------------------
 
@@ -291,8 +321,8 @@ export function sequence(spec = {}, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// TODO (M2) — music helpers (sequence() + scale() + chord() above are done so far):
-//   export function progression(key, roman)  → [[Hz…], …]
+// TODO (M2) — music helpers (sequence() + scale() + chord() + progression()
+// above are done so far):
 //   sequence(): per-step velocity, PolyBLEP band-limiting for saw/square
 // TODO (M2) — filters: lowpass(buf, cutoff, sr) / highpass(...) (one-pole/biquad)
 // TODO (M3) — SFX presets: clack / riichi / tsumo / ron / doraFlip (intensity, pitch)
