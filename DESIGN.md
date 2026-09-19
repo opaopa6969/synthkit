@@ -47,7 +47,7 @@ from game state (tension, round, score).
 | Oscillator   | `sine` / `saw` / `square` / `triangle` / `noise`      | M1        |
 | Envelope     | ADSR — attack / decay / sustain (level) / release     | M1        |
 | Filter       | low-pass / high-pass (one-pole → biquad)              | M2        |
-| Sequencer    | notes/events over time (steps, durations, gate)       | M2        |
+| Sequencer    | notes/events over time (steps, gate) — `sequence()`   | M2 (slice 1 done) |
 | Music theory | `scale(root, mode)`, `chord(root, quality)`, progressions | M2    |
 | Mixer/graph  | a spec `{ osc, env, filter, seq, gain }` → output      | M2/M4     |
 
@@ -65,8 +65,22 @@ from game state (tension, round, score).
 
 `sustain` and `gain` values outside `0..1` are clamped to that range.
 
-The spec GROWS (it does not change shape) at later milestones: `filter`, `seq`,
-and a `voices`/`mix` array layer on top of the same object.
+The spec GROWS (it does not change shape) at later milestones: `seq` (live
+today, see below), then `filter` and a `voices`/`mix` array layer on top of the
+same object.
+
+### `seq` — `sequence(spec, { sampleRate = 44100, step = 0.25, gate = 1 })` *(M2 slice 1, live today)*
+
+`spec.seq` is an array of steps: a note name, a raw Hz number, or `null` /
+`undefined` for a rest. Each sounding step is one `render()` of the same spec
+(`osc` / `env` / `gain` / `seed`) held for `step * gate` seconds, summed into
+the output at `i * step`. Output length is
+`round(sampleRate * (seq.length * step + release))`. Release tails overlap the
+following steps; to keep the `[-1, 1]` invariant *without* clipping distortion
+every voice is scaled by `1 / (1 + extra)` where `extra` is how many later
+steps a note's `hold + release` spills into (polyphony headroom). With no
+spill the level equals `render()`'s. A final clamp is a safety net for
+sub-sample rounding only.
 
 ## The two outputs
 
@@ -102,12 +116,12 @@ absolute semitone index and anchors A4 = MIDI 69 = 440 Hz.
   Produce a clean note: correct frequency (DFT-verified), no clipping
   (`|sample| ≤ 1`), non-trivial RMS, deterministic across renders. `note()`
   helper. Headless test suite.
-- **M2 — sequencer + music theory**
-  `scale` / `chord` / `progression`; `sequence(spec, opts)` to render notes
-  over time (steps, durations, gate). One-pole then biquad low-/high-pass
-  filters. Enables melodies, arps and chord progressions; tests assert note
-  onsets/offsets and per-step pitch via windowed DFT. PolyBLEP band-limiting
-  for saw/square to cut aliasing.
+- **M2 — sequencer + music theory** *(slice 1 done: `sequence()`)*
+  `sequence(spec, opts)` renders notes over time (steps, gate) — done; tests
+  assert per-step pitch via windowed DFT, rest silence and headroom. Still
+  planned: `scale` / `chord` / `progression`, per-step velocity, one-pole then
+  biquad low-/high-pass filters, PolyBLEP band-limiting for saw/square to cut
+  aliasing.
 - **M3 — SFX presets**
   Parametric presets for the mahjong table: **tile clack**, **riichi call**,
   **ツモ / ロン fanfare**, **dora flip** — each a function of dynamic params

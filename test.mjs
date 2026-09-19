@@ -2,7 +2,7 @@
 // audio hardware), is deterministic, and renders a clean, non-clipping note.
 // Headless QA for audio = ANALYZING the buffer (length / peak / RMS / spectrum)
 // since we cannot "listen". Run:  node test.mjs   (or: npm test)
-import { render, note } from './index.js';
+import { render, note, sequence } from './index.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error('  ✗ ' + msg); } };
@@ -272,6 +272,107 @@ for (const osc of ['saw', 'square', 'triangle']) {
   // sampleRate floor is 1 (0 / negative clamp up, not down to an empty buffer).
   const floor = render({ osc: 'sine', freq: 1 }, { sampleRate: 0, duration: 0.1 });
   ok(floor.length === Math.max(1, Math.round(1 * (0.1 + 0.1))), `sampleRate 0 clamps to 1 (got ${floor.length})`);
+}
+
+// ---------------------------------------------------------------------------
+// sequence() — M2 slice 1: a list of notes / rests rendered over time.
+// ---------------------------------------------------------------------------
+{
+  // Goertzel magnitude of `f` over buf[start .. start+N] (windowed DFT probe).
+  const magAt = (b, start, N, f) => {
+    const k = (f * N) / SR;
+    const omega = (2 * Math.PI * k) / N;
+    const cw = Math.cos(omega), coeff = 2 * cw;
+    let s0 = 0, s1 = 0, s2 = 0;
+    for (let i = 0; i < N; i++) {
+      s0 = b[start + i] + coeff * s1 - s2;
+      s2 = s1; s1 = s0;
+    }
+    return Math.hypot(s1 - s2 * cw, s2 * Math.sin(omega));
+  };
+  const peakOf = (b, from = 0, to = b.length) => {
+    let p = 0;
+    for (let i = from; i < to; i++) p = Math.max(p, Math.abs(b[i]));
+    return p;
+  };
+  const sameBuf = (a, b) => {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+    return true;
+  };
+
+  const STEP = 0.25;
+  const env = { attack: 0.01, decay: 0.05, sustain: 0.7, release: 0.1 };
+  const seqSpec = { osc: 'sine', env, gain: 0.9, seq: ['C4', 'E4', null, 'G4'] };
+  const buf = sequence(seqSpec, { sampleRate: SR, step: STEP });
+
+  // length = sampleRate * (steps * step + release), regardless of rests.
+  const wantLen = Math.round(SR * (4 * STEP + env.release));
+  ok(buf.length === wantLen, `sequence length is sampleRate*(steps*step+release) (got ${buf.length}, want ${wantLen})`);
+  ok(buf.every(Number.isFinite), 'sequence buffer is all finite');
+  ok(peakOf(buf) <= 1, `sequence never clips (peak ${peakOf(buf).toFixed(4)})`);
+  ok(peakOf(buf) > 0.3, `sequence is audibly loud (peak ${peakOf(buf).toFixed(4)})`);
+
+  // per-step pitch: in the middle of each sounding step the expected note
+  // dominates over the other two notes of the pattern.
+  const N = 4096;
+  const expect = [note('C4'), note('E4'), null, note('G4')];
+  for (let i = 0; i < expect.length; i++) {
+    if (expect[i] === null) continue;
+    const start = Math.round(SR * (i * STEP + STEP * 0.5)) - N / 2;
+    const mags = expect.map((f) => (f === null ? 0 : magAt(buf, start, N, f)));
+    const others = mags.filter((_, j) => j !== i && expect[j] !== null);
+    ok(others.every((m) => mags[i] > m * 3),
+      `step ${i} is dominated by ${['C4', 'E4', '-', 'G4'][i]} (mags ${mags.map((m) => m.toFixed(1)).join('/')})`);
+  }
+
+  // the rest step is silent once the previous note's release tail has died out.
+  const restFrom = Math.round(SR * (2 * STEP + env.release)) + 1;
+  const restTo = Math.round(SR * (3 * STEP));
+  ok(peakOf(buf, restFrom, restTo) === 0, `rest step is silent after the release tail (peak ${peakOf(buf, restFrom, restTo)})`);
+
+  // deterministic across two runs.
+  ok(sameBuf(buf, sequence(seqSpec, { sampleRate: SR, step: STEP })), 'sequence is deterministic across two runs');
+
+  // headroom: with release 0.1 spilling into the next step, each voice is scaled
+  // by 1/2 so two summed voices stay <= gain (0.9) and the safety clamp never
+  // engages (no sample sits exactly at +-1).
+  ok(peakOf(buf) <= 0.9, `overlapping tails are scaled for headroom, sum <= gain (peak ${peakOf(buf).toFixed(4)})`);
+  ok(buf.every((v) => Math.abs(v) < 1), 'safety clamp does not engage for the default-style spec');
+  // …and with NO spill (staccato gate) the level equals a plain render().
+  const stacc = sequence({ osc: 'square', env: { attack: 0, decay: 0, sustain: 1, release: 0 }, gain: 1, seq: [1] },
+    { sampleRate: 10, step: 1, gate: 0.5 });
+  ok(stacc.length === 10, `gate < 1 keeps the pattern length (got ${stacc.length})`);
+  ok(Array.from(stacc).map((v) => (v === 1 ? '+' : v === 0 ? '0' : '?')).join('') === '+++++00000',
+    'gate 0.5 holds the note for half the step, then silence, at full level');
+
+  // rests only / empty pattern → silent buffers of the right length, no throw.
+  const rests = sequence({ seq: [null, undefined], env }, { sampleRate: 10, step: 0.5 });
+  ok(rests.length === 11 && rests.every((v) => v === 0), 'rest-only pattern renders silence');
+  const empty = sequence({ seq: [] , env: { release: 0 } }, { sampleRate: 10 });
+  ok(empty.length === 1 && empty[0] === 0, 'empty pattern renders a single silent sample');
+  ok(sequence({}, { sampleRate: 10 }).length === 1, 'missing seq behaves like an empty pattern');
+
+  // Hz numbers are accepted per step, same as render()'s freq.
+  const hz = sequence({ osc: 'sine', env, seq: [440] }, { sampleRate: SR, step: 0.3 });
+  ok(magAt(hz, Math.round(SR * 0.15) - N / 2, N, 440) > magAt(hz, Math.round(SR * 0.15) - N / 2, N, 220) * 3,
+    'numeric Hz steps render that frequency');
+
+  // Back-to-back notes (release 0, gate 1) on a non-integer sample step must
+  // neither overlap nor leave a gap: sr=10, step=0.25 → step edges land on
+  // 2.5 / 5 / 7.5 samples. Rounding the voice LENGTH would put the 3rd note on
+  // [5,8) and the 2nd on [3,6) — sample 5 summed to 2×. Rounding absolute
+  // start/end instead tiles the pattern exactly.
+  const tiled = sequence({ osc: 'square', env: { attack: 0, decay: 0, sustain: 1, release: 0 }, gain: 0.5, seq: [0, 0, 0, 0] },
+    { sampleRate: 10, step: 0.25 });
+  ok(tiled.length === 10 && tiled.every((v) => v === 0.5),
+    `back-to-back notes tile without overlap or gap (got ${Array.from(tiled).join(',')})`);
+
+  // step 0 (all notes at once) still honours the [-1,1] invariant.
+  const stacked = sequence({ osc: 'square', env: { attack: 0, decay: 0, sustain: 1, release: 0.5 }, gain: 1, seq: [0, 0, 0] },
+    { sampleRate: 10, step: 0 });
+  ok(stacked.every((v) => Number.isFinite(v) && Math.abs(v) <= 1), 'step 0 stacks voices without exceeding [-1,1]');
+  ok(stacked[0] === 1, `step 0 stacks 3 voices at 1/3 each (got ${stacked[0]})`);
 }
 
 if (fail) { console.error(`synthkit M1: ${fail} FAILED, ${pass} passed`); process.exit(1); }
