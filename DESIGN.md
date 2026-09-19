@@ -48,7 +48,7 @@ from game state (tension, round, score).
 | Envelope     | ADSR — attack / decay / sustain (level) / release     | M1        |
 | Filter       | low-pass / high-pass (one-pole → biquad)              | M2        |
 | Sequencer    | notes/events over time (steps, gate) — `sequence()`   | M2 (slice 1 done) |
-| Music theory | `scale(root, mode)`, `chord(root, quality)` (done), progressions | M2 |
+| Music theory | `scale()`, `chord()`, major-key `progression()` (done) | M2 |
 | Mixer/graph  | a spec `{ osc, env, filter, seq, gain }` → output      | M2/M4     |
 
 ### The synth spec (M1 subset, live today)
@@ -120,7 +120,7 @@ absolute semitone index and anchors A4 = MIDI 69 = 440 Hz.
   Produce a clean note: correct frequency (DFT-verified), no clipping
   (`|sample| ≤ 1`), non-trivial RMS, deterministic across renders. `note()`
   helper. Headless test suite.
-- **M2 — sequencer + music theory** *(in progress: `sequence()`, `scale()` done)*
+- **M2 — sequencer + music theory** *(in progress: core music helpers done)*
   `sequence(spec, opts)` renders notes over time (steps, gate) — done; tests
   assert per-step pitch via windowed DFT, rest silence and headroom.
   `scale(root, mode)` returns the 7 diatonic-mode degrees (Hz) from a root,
@@ -129,9 +129,11 @@ absolute semitone index and anchors A4 = MIDI 69 = 440 Hz.
   tones (Hz) from a root — done; triads (major/minor/diminished/augmented) and
   four-note sevenths (major7/minor7/dominant7/diminished7/halfDiminished7),
   short aliases (`maj`, `min`/`m`, `dim`, `aug`, `7`, …), tested against
-  `note()`. Still planned: `progression`, per-step velocity, one-pole then
-  biquad low-/high-pass filters, PolyBLEP band-limiting for saw/square to cut
-  aliasing.
+  `note()`. `progression(root, roman)` composes the seven major-key diatonic
+  triads (`I` through `vii°`) from `scale()` and `chord()`, preserving chord
+  boundaries as nested Hz arrays. Still planned: per-step velocity, one-pole
+  then biquad low-/high-pass filters, and PolyBLEP band-limiting for saw/square
+  to cut aliasing.
 - **M3 — SFX presets**
   Parametric presets for the mahjong table: **tile clack**, **riichi call**,
   **ツモ / ロン fanfare**, **dora flip** — each a function of dynamic params
