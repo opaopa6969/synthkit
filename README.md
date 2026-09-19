@@ -37,7 +37,11 @@ A **spec** is plain data:
 }
 ```
 
-`sustain` and `gain` values outside `0..1` are clamped to that range.
+`sustain` and `gain` values outside `0..1` are clamped to that range. The
+envelope *times* (`attack` / `decay` / `release`, seconds) are coerced the same
+way as the render options: `NaN` / `Infinity` / non-numbers fall back to the
+defaults above and finite values are clamped to `0..3600`, so a malformed
+`release` can never change the documented output length.
 
 ## Usage
 
@@ -91,7 +95,7 @@ voice.start();
 
 ```bash
 node test.mjs      # or: npm test
-# → synthkit M1: 76 passed
+# → synthkit M1: 88 passed
 ```
 
 The test renders an A4 sine and asserts the buffer's length, finiteness, peak

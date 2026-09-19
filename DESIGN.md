@@ -63,7 +63,11 @@ from game state (tension, round, score).
 }
 ```
 
-`sustain` and `gain` values outside `0..1` are clamped to that range.
+`sustain` and `gain` values outside `0..1` are clamped to that range. The
+envelope *times* (`attack` / `decay` / `release`, seconds) are coerced the same
+way as the render options: `NaN` / `Infinity` / non-numbers fall back to the
+defaults above and finite values are clamped to `0..3600`, so a malformed
+`release` can never change the documented output length.
 
 The spec GROWS (it does not change shape) at later milestones: `seq` (live
 today, see below), then `filter` and a `voices`/`mix` array layer on top of the

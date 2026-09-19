@@ -375,5 +375,44 @@ for (const osc of ['saw', 'square', 'triangle']) {
   ok(stacked[0] === 1, `step 0 stacks 3 voices at 1/3 each (got ${stacked[0]})`);
 }
 
+// ---------------------------------------------------------------------------
+// Malformed ADSR *time* fields must not break the documented length contract.
+// The buffer length is sampleRate * (duration + release), so a bad `release`
+// used to silently produce an empty (NaN) or 1-sample (negative) buffer, and a
+// huge one escaped the sampleRate/duration bound with a RangeError.
+// ---------------------------------------------------------------------------
+{
+  const sr = 1000, dur = 0.2;
+  const lenOf = (release) => render({ osc: 'sine', freq: 'A4', env: { release } }, { sampleRate: sr, duration: dur }).length;
+  const defaultLen = Math.round(sr * (dur + 0.1));
+
+  ok(lenOf(NaN) === defaultLen, `release NaN falls back to the 0.1 s default (got ${lenOf(NaN)}, want ${defaultLen})`);
+  ok(lenOf(Infinity) === defaultLen, `release Infinity falls back to the default (got ${lenOf(Infinity)})`);
+  ok(lenOf('0.5') === defaultLen, `non-number release falls back to the default (got ${lenOf('0.5')})`);
+  ok(lenOf(-1) === Math.round(sr * dur), `negative release clamps to 0, not to an empty buffer (got ${lenOf(-1)})`);
+  ok(lenOf(1e5) === Math.round(sr * (dur + 3600)), `huge release clamps to 3600 s instead of throwing (got ${lenOf(1e5)})`);
+
+  // A bad release must not poison the samples either.
+  const nanRel = render({ osc: 'sine', freq: 'A4', env: { release: NaN } }, { sampleRate: sr, duration: dur });
+  ok(nanRel.every((v) => Number.isFinite(v) && Math.abs(v) <= 1), 'release NaN still renders finite, non-clipping samples');
+
+  // attack / decay take the same treatment: bad values fall back to defaults
+  // (a NaN attack used to compare false and skip straight to sustain).
+  const nanAtk = render({ osc: 'sine', freq: 'A4', env: { attack: NaN, decay: NaN } }, { sampleRate: sr, duration: dur });
+  const goodAtk = render({ osc: 'sine', freq: 'A4', env: { attack: 0.01, decay: 0.05 } }, { sampleRate: sr, duration: dur });
+  ok(nanAtk.length === goodAtk.length && nanAtk.every((v, i) => v === goodAtk[i]),
+    'NaN attack / decay render exactly like the documented defaults');
+  ok(render({ osc: 'sine', freq: 'A4', env: { attack: -1, decay: -1 } }, { sampleRate: sr, duration: dur })
+    .every((v) => Number.isFinite(v)), 'negative attack / decay clamp to 0 and stay finite');
+
+  // sequence() inherits the same contract: length = sr * (steps * step + release).
+  const seqSpec = (release) => sequence({ osc: 'sine', env: { release }, seq: ['C4', 'E4'] }, { sampleRate: sr, step: 0.25 });
+  ok(seqSpec(NaN).length === Math.round(sr * (2 * 0.25 + 0.1)),
+    `sequence() release NaN keeps the documented length (got ${seqSpec(NaN).length})`);
+  ok(seqSpec(-1).length === Math.round(sr * (2 * 0.25)),
+    `sequence() negative release clamps to 0 (got ${seqSpec(-1).length})`);
+  ok(seqSpec(NaN).every((v) => Number.isFinite(v) && Math.abs(v) <= 1), 'sequence() release NaN stays finite and unclipped');
+}
+
 if (fail) { console.error(`synthkit M1: ${fail} FAILED, ${pass} passed`); process.exit(1); }
 console.log(`synthkit M1: ${pass} passed`);

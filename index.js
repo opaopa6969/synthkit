@@ -79,6 +79,20 @@ function finiteOpt(x, def, min, max) {
   return Math.min(max, Math.max(min, x));
 }
 
+// Same coercion for the ADSR *time* fields (attack / decay / release, seconds).
+// A malformed `release` is not just cosmetic: the buffer length is
+// `sampleRate * (duration + release)`, so `release: NaN` silently produced a
+// ZERO-length buffer, `release: -1` a 1-sample one (breaking the documented
+// length contract of both render() and sequence()), and `release: 1e5` escaped
+// the bound that sampleRate/duration already have and threw
+// `RangeError: Invalid typed array length`. Non-numbers / NaN / Infinity fall
+// back to the documented default; finite values are clamped to the same
+// physically meaningful window as `duration`.
+const ENV_TIME_MAX = 3600;
+function envTime(x, def) {
+  return finiteOpt(x, def, 0, ENV_TIME_MAX);
+}
+
 // ---------------------------------------------------------------------------
 // ADSR envelope — amplitude ∈ [0, 1] at time t (seconds), given a note that is
 // held for `duration` seconds. attack→decay→sustain (held) then release.
@@ -95,10 +109,10 @@ function heldAmp(a, d, s, t) {
 }
 
 function adsrAmp(env, t, duration) {
-  const a = env.attack  ?? 0.01;
-  const d = env.decay   ?? 0.05;
+  const a = envTime(env.attack, 0.01);
+  const d = envTime(env.decay, 0.05);
   const s = clamp01(env.sustain ?? 0.7); // sustain LEVEL (0..1), not a time
-  const r = env.release ?? 0.1;
+  const r = envTime(env.release, 0.1);
 
   if (t < 0) return 0;
   // Release begins at note-off (t = duration). The release ramp anchors on the
@@ -115,7 +129,7 @@ function adsrAmp(env, t, duration) {
 
 // total tail length of a note = its held duration + its release time.
 function noteTail(env, duration) {
-  return duration + (env.release ?? 0.1);
+  return duration + envTime(env.release, 0.1);
 }
 
 // ---------------------------------------------------------------------------
@@ -191,7 +205,7 @@ export function sequence(spec = {}, opts = {}) {
   const env = spec.env ?? {};
   const hold = step * gate;
 
-  const release = env.release ?? 0.1;
+  const release = envTime(env.release, 0.1);
 
   const totalSec = seq.length * step + release;
   const n = Math.max(1, Math.round(sampleRate * totalSec));
