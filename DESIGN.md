@@ -46,7 +46,7 @@ from game state (tension, round, score).
 | ------------ | ----------------------------------------------------- | --------- |
 | Oscillator   | `sine` / `saw` / `square` / `triangle` / `noise`      | M1        |
 | Envelope     | ADSR — attack / decay / sustain (level) / release     | M1        |
-| Filter       | low-pass / high-pass (one-pole → biquad)              | M2        |
+| Filter       | offline low/high-pass (one-pole done; biquad planned)  | M2        |
 | Sequencer    | notes/events over time (steps, gate) — `sequence()`   | M2 (slice 1 done) |
 | Music theory | `scale()`, `chord()`, major-key `progression()` (done) | M2 |
 | Mixer/graph  | a spec `{ osc, env, filter, seq, gain }` → output      | M2/M4     |
@@ -131,9 +131,11 @@ absolute semitone index and anchors A4 = MIDI 69 = 440 Hz.
   short aliases (`maj`, `min`/`m`, `dim`, `aug`, `7`, …), tested against
   `note()`. `progression(root, roman)` composes the seven major-key diatonic
   triads (`I` through `vii°`) from `scale()` and `chord()`, preserving chord
-  boundaries as nested Hz arrays. Still planned: per-step velocity, one-pole
-  then biquad low-/high-pass filters, and PolyBLEP band-limiting for saw/square
-  to cut aliasing.
+  boundaries as nested Hz arrays. `lowpass(buffer, cutoff, sampleRate)` and
+  `highpass(...)` provide deterministic one-pole offline transforms without
+  mutating their input. Still planned: per-step velocity, `spec.filter`
+  composition, biquad/resonance, and PolyBLEP band-limiting for saw/square to
+  cut aliasing.
 - **M3 — SFX presets**
   Parametric presets for the mahjong table: **tile clack**, **riichi call**,
   **ツモ / ロン fanfare**, **dora flip** — each a function of dynamic params

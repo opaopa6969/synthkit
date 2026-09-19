@@ -19,8 +19,8 @@ import { clamp01, clampSym, mulberry32 } from 'kazu';
 //
 // This file is the M1 core: oscillator (sine/saw/square/triangle) through an
 // ADSR envelope → Float32Array, plus equal-temperament note(name)→Hz — and the
-// first M2 slice, sequence(): a list of notes/rests rendered over time. Filters,
-// music-theory helpers and Web-Audio connect() are planned for M2+.
+// M2 adds sequence(), music-theory helpers and deterministic one-pole offline
+// filters. Web-Audio connect() is planned for M4.
 
 // ---------------------------------------------------------------------------
 // Music theory — note(name) → frequency (Hz). Equal temperament, A4 = 440 Hz.
@@ -256,6 +256,48 @@ export function render(spec = {}, opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// lowpass/highpass(buffer, cutoff, sampleRate) → Float32Array  [M2, OFFLINE]
+//
+// A deterministic one-pole filter over an already-rendered mono buffer. The
+// low-pass state uses the exact exponential coefficient for the requested
+// cutoff; high-pass is its complementary signal (input - low-pass state).
+// Both functions leave the source buffer untouched so callers can compare or
+// reuse an unfiltered render. A later slice can compose this primitive into a
+// plain-data `spec.filter` without duplicating the DSP rule.
+// ---------------------------------------------------------------------------
+function filterArgs(buffer, cutoff, sampleRate) {
+  if (!(buffer instanceof Float32Array)) {
+    throw new TypeError('synthkit: filter buffer must be a Float32Array');
+  }
+  if (typeof sampleRate !== 'number' || !Number.isFinite(sampleRate) || sampleRate <= 0) {
+    throw new RangeError('synthkit: filter sampleRate must be a finite positive number');
+  }
+  if (typeof cutoff !== 'number' || !Number.isFinite(cutoff) || cutoff < 0 || cutoff > sampleRate / 2) {
+    throw new RangeError('synthkit: filter cutoff must be finite and between 0 and Nyquist');
+  }
+  return 1 - Math.exp((-TAU * cutoff) / sampleRate);
+}
+
+function onePole(buffer, cutoff, sampleRate, highpass) {
+  const alpha = filterArgs(buffer, cutoff, sampleRate);
+  const out = new Float32Array(buffer.length);
+  let low = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    low += alpha * (buffer[i] - low);
+    out[i] = highpass ? buffer[i] - low : low;
+  }
+  return out;
+}
+
+export function lowpass(buffer, cutoff, sampleRate = 44100) {
+  return onePole(buffer, cutoff, sampleRate, false);
+}
+
+export function highpass(buffer, cutoff, sampleRate = 44100) {
+  return onePole(buffer, cutoff, sampleRate, true);
+}
+
+// ---------------------------------------------------------------------------
 // sequence(spec, opts) → Float32Array  [M2 slice 1, PURE / OFFLINE]
 //
 // Render a list of notes over time: every step is one render() call whose
@@ -324,7 +366,8 @@ export function sequence(spec = {}, opts = {}) {
 // TODO (M2) — music helpers (sequence() + scale() + chord() + progression()
 // above are done so far):
 //   sequence(): per-step velocity, PolyBLEP band-limiting for saw/square
-// TODO (M2) — filters: lowpass(buf, cutoff, sr) / highpass(...) (one-pole/biquad)
+// TODO (M2) — filters: compose the one-pole buffer primitives into spec.filter;
+//   add biquad/resonance only when a concrete product use needs them
 // TODO (M3) — SFX presets: clack / riichi / tsumo / ron / doraFlip (intensity, pitch)
 // TODO (M4) — live Web Audio:
 //   export function connect(spec, audioContext) → { output: AudioNode, start, stop }

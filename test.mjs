@@ -2,7 +2,7 @@
 // audio hardware), is deterministic, and renders a clean, non-clipping note.
 // Headless QA for audio = ANALYZING the buffer (length / peak / RMS / spectrum)
 // since we cannot "listen". Run:  node test.mjs   (or: npm test)
-import { render, note, sequence, scale, chord, progression } from './index.js';
+import { render, note, sequence, scale, chord, progression, lowpass, highpass } from './index.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error('  ✗ ' + msg); } };
@@ -409,6 +409,67 @@ for (const osc of ['saw', 'square', 'triangle']) {
 }
 
 // ---------------------------------------------------------------------------
+// lowpass()/highpass() — deterministic one-pole offline buffer transforms.
+// ---------------------------------------------------------------------------
+{
+  const TAU = Math.PI * 2;
+  const sampleRate = 8000;
+  const length = sampleRate;
+  const mixed = new Float32Array(length);
+  for (let i = 0; i < length; i++) {
+    const t = i / sampleRate;
+    mixed[i] = 0.5 * Math.sin(TAU * 100 * t) + 0.5 * Math.sin(TAU * 2000 * t);
+  }
+
+  const magnitude = (samples, frequency) => {
+    let real = 0, imag = 0;
+    // Skip the short startup transient before measuring steady-state response.
+    for (let i = 1000; i < samples.length; i++) {
+      const phase = (TAU * frequency * i) / sampleRate;
+      real += samples[i] * Math.cos(phase);
+      imag -= samples[i] * Math.sin(phase);
+    }
+    return Math.hypot(real, imag);
+  };
+
+  const source = mixed.slice();
+  const low = lowpass(mixed, 400, sampleRate);
+  const high = highpass(mixed, 400, sampleRate);
+  ok(low instanceof Float32Array && low.length === mixed.length,
+    'lowpass() returns a same-length Float32Array');
+  ok(high instanceof Float32Array && high.length === mixed.length,
+    'highpass() returns a same-length Float32Array');
+  ok(magnitude(low, 100) > magnitude(low, 2000) * 4,
+    'lowpass() retains the low tone and attenuates the high tone');
+  ok(magnitude(high, 2000) > magnitude(high, 100) * 4,
+    'highpass() retains the high tone and attenuates the low tone');
+  ok(low.every((value, i) => Math.abs(value + high[i] - mixed[i]) < 1e-7),
+    'lowpass() and highpass() are sample-wise complementary');
+  ok(mixed.every((value, i) => value === source[i]), 'filters do not mutate their input buffer');
+  const lowAgain = lowpass(mixed, 400, sampleRate);
+  ok(low.every((value, i) => value === lowAgain[i]),
+    'lowpass() is deterministic');
+
+  const empty = new Float32Array();
+  ok(lowpass(empty, 100).length === 0 && highpass(empty, 100).length === 0,
+    'filters preserve an empty buffer');
+  const edge = new Float32Array([1, -0.5, 0.25]);
+  ok(lowpass(edge, 0, sampleRate).every((value) => value === 0),
+    'zero-cutoff lowpass() returns silence');
+  ok(highpass(edge, 0, sampleRate).every((value, i) => value === edge[i]),
+    'zero-cutoff highpass() returns the input signal');
+
+  throws(() => lowpass([1, 2], 100), /buffer must be a Float32Array/,
+    'filters reject non-Float32Array buffers');
+  throws(() => lowpass(edge, NaN), /cutoff must be finite and between 0 and Nyquist/,
+    'filters reject non-finite cutoff');
+  throws(() => highpass(edge, 5000, sampleRate), /cutoff must be finite and between 0 and Nyquist/,
+    'filters reject cutoff above Nyquist');
+  throws(() => highpass(edge, 100, 0), /sampleRate must be a finite positive number/,
+    'filters reject non-positive sampleRate');
+}
+
+// ---------------------------------------------------------------------------
 // sequence() — M2 slice 1: a list of notes / rests rendered over time.
 // ---------------------------------------------------------------------------
 {
@@ -548,5 +609,5 @@ for (const osc of ['saw', 'square', 'triangle']) {
   ok(seqSpec(NaN).every((v) => Number.isFinite(v) && Math.abs(v) <= 1), 'sequence() release NaN stays finite and unclipped');
 }
 
-if (fail) { console.error(`synthkit M1: ${fail} FAILED, ${pass} passed`); process.exit(1); }
-console.log(`synthkit M1: ${pass} passed`);
+if (fail) { console.error(`synthkit M1+M2: ${fail} FAILED, ${pass} passed`); process.exit(1); }
+console.log(`synthkit M1+M2: ${pass} passed`);
