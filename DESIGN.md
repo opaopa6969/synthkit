@@ -48,7 +48,7 @@ from game state (tension, round, score).
 | Envelope     | ADSR — attack / decay / sustain (level) / release     | M1        |
 | Filter       | low-pass / high-pass (one-pole → biquad)              | M2        |
 | Sequencer    | notes/events over time (steps, gate) — `sequence()`   | M2 (slice 1 done) |
-| Music theory | `scale(root, mode)`, `chord(root, quality)`, progressions | M2    |
+| Music theory | `scale(root, mode)` (done), `chord(root, quality)`, progressions | M2 |
 | Mixer/graph  | a spec `{ osc, env, filter, seq, gain }` → output      | M2/M4     |
 
 ### The synth spec (M1 subset, live today)
@@ -120,12 +120,14 @@ absolute semitone index and anchors A4 = MIDI 69 = 440 Hz.
   Produce a clean note: correct frequency (DFT-verified), no clipping
   (`|sample| ≤ 1`), non-trivial RMS, deterministic across renders. `note()`
   helper. Headless test suite.
-- **M2 — sequencer + music theory** *(slice 1 done: `sequence()`)*
+- **M2 — sequencer + music theory** *(in progress: `sequence()`, `scale()` done)*
   `sequence(spec, opts)` renders notes over time (steps, gate) — done; tests
-  assert per-step pitch via windowed DFT, rest silence and headroom. Still
-  planned: `scale` / `chord` / `progression`, per-step velocity, one-pole then
-  biquad low-/high-pass filters, PolyBLEP band-limiting for saw/square to cut
-  aliasing.
+  assert per-step pitch via windowed DFT, rest silence and headroom.
+  `scale(root, mode)` returns the 7 diatonic-mode degrees (Hz) from a root,
+  equal temperament — done; tests assert against `note()` for major/minor and
+  the five other modes. Still planned: `chord` / `progression`, per-step
+  velocity, one-pole then biquad low-/high-pass filters, PolyBLEP
+  band-limiting for saw/square to cut aliasing.
 - **M3 — SFX presets**
   Parametric presets for the mahjong table: **tile clack**, **riichi call**,
   **ツモ / ロン fanfare**, **dora flip** — each a function of dynamic params

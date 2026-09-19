@@ -2,7 +2,7 @@
 // audio hardware), is deterministic, and renders a clean, non-clipping note.
 // Headless QA for audio = ANALYZING the buffer (length / peak / RMS / spectrum)
 // since we cannot "listen". Run:  node test.mjs   (or: npm test)
-import { render, note, sequence } from './index.js';
+import { render, note, sequence, scale } from './index.js';
 
 let pass = 0, fail = 0;
 const ok = (cond, msg) => { if (cond) { pass++; } else { fail++; console.error('  ✗ ' + msg); } };
@@ -56,6 +56,51 @@ ok(note(123.45) === 123.45, 'note() passes numeric frequencies through unchanged
 ok(Math.abs(note('C-1') * 2 - note('C0')) < 1e-9, 'note() accepts negative octaves');
 throws(() => note('H4'), /bad note name "H4"/, 'note() rejects invalid note names');
 throws(() => render({ osc: 'supersaw' }), /unknown osc type "supersaw"/, 'render() rejects unknown oscillator types');
+
+// scale(root, mode) — the 7 diatonic-mode degrees from root, equal
+// temperament. Checked against note() directly rather than hard-coded Hz
+// values so the assertion tracks note()'s own math.
+{
+  const degrees = (root, names) => names.map((n) => note(n));
+
+  const cMajor = scale('C4', 'major');
+  const cMajorExpected = degrees('C4', ['C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4']);
+  ok(cMajor.length === 7, `scale() returns 7 degrees (got ${cMajor.length})`);
+  ok(cMajor.every((hz, i) => Math.abs(hz - cMajorExpected[i]) < 1e-9),
+    `scale('C4', 'major') matches C D E F G A B (got ${cMajor.map((h) => h.toFixed(2))})`);
+
+  const aMinor = scale('A4', 'minor');
+  const aMinorExpected = degrees('A4', ['A4', 'B4', 'C5', 'D5', 'E5', 'F5', 'G5']);
+  ok(aMinor.every((hz, i) => Math.abs(hz - aMinorExpected[i]) < 1e-9),
+    `scale('A4', 'minor') matches A B C D E F G, one octave up where it wraps (got ${aMinor.map((h) => h.toFixed(2))})`);
+
+  // 'major'/'minor' are aliases for 'ionian'/'aeolian'.
+  ok(scale('C4', 'ionian').every((hz, i) => hz === cMajor[i]), "mode 'ionian' is an alias for 'major'");
+  ok(scale('A4', 'aeolian').every((hz, i) => hz === aMinor[i]), "mode 'aeolian' is an alias for 'minor'");
+
+  // the other five diatonic modes are reachable and each degree is a valid,
+  // finite, positive frequency (full correctness of every mode's interval
+  // table would just re-state MODE_INTERVALS; this proves they resolve).
+  for (const mode of ['dorian', 'phrygian', 'lydian', 'mixolydian', 'locrian']) {
+    const degs = scale('C4', mode);
+    ok(degs.length === 7 && degs.every((hz) => Number.isFinite(hz) && hz > 0),
+      `scale('C4', '${mode}') returns 7 finite, positive frequencies`);
+  }
+
+  // default mode is 'major'.
+  ok(scale('C4').every((hz, i) => hz === cMajor[i]), "scale() with no mode defaults to 'major'");
+
+  // root accepts a raw Hz number too, same as spec.freq / render().
+  ok(scale(440, 'major')[0] === 440, 'scale() accepts a numeric Hz root');
+
+  throws(() => scale('C4', 'blues'), /unknown mode "blues"/, 'scale() rejects unknown modes');
+
+  // scale() output drops straight into sequence()'s seq (a scale run).
+  const run = sequence({ osc: 'sine', env: { attack: 0, decay: 0, sustain: 1, release: 0 }, seq: scale('C4', 'major') },
+    { sampleRate: 10, step: 1 });
+  ok(run.length === 70 && run.every((v) => Number.isFinite(v) && Math.abs(v) <= 1),
+    `scale('C4', 'major') feeds sequence()'s seq without producing NaN or clipping (got ${run.length} samples)`);
+}
 
 // Zero-length ADSR stages transition immediately and remain finite.
 {
